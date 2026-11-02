@@ -15,6 +15,7 @@ export WINEDEBUG="${WINEDEBUG:-fixme-all}"
 export DXVK_CONFIG_FILE="${DXVK_CONFIG_FILE:-Z:${DXVK_CONF//\//\\}}"
 export DXVK_LOG_LEVEL="${DXVK_LOG_LEVEL:-warn}"
 export DXVK_LOG_PATH="${DXVK_LOG_PATH:-none}"
+export DXVK_STATE_CACHE_PATH="${DXVK_STATE_CACHE_PATH:-Z:${TM2020_ROOT//\//\\}\\dxvk-cache}"
 
 readonly INSTALLER_URL="https://static3.cdn.ubi.com/orbit/launcher_installer/UbisoftConnectInstaller.exe"
 readonly CDN_URL="${TM2020_CDN_URL:-http://uplaypc-s-ubisoft.cdn.ubi.com/}"
@@ -113,7 +114,8 @@ case "${1:-}" in
     # patches/wine/0003 moves WebGL in Connect's GPU process to D3D11, which
     # DXVK answers for with the identity in config/dxvk.conf.
     use_dxvk UplayWebCore.exe x32 syswow64
-    mkdir -p "$LOGS"
+    use_dxvk Trackmania.exe x64 system32
+    mkdir -p "$LOGS" "${TM2020_ROOT}/dxvk-cache"
     exec "$WINE" "$CONNECT_EXE" >"${LOGS}/connect.log" 2>&1
     ;;
   stop)
