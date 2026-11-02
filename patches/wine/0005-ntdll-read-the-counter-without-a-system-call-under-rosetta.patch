@@ -1,0 +1,178 @@
+Subject: ntdll: Read the performance counter without a system call under Rosetta.
+
+QueryPerformanceCounter always crosses to the Unix side, which takes about 400 ns under
+Rosetta because each direction switches GSBASE with a system call. Trackmania reads the
+counter about 1,900 times per frame, about 1,600 of them on its busiest thread, and that
+thread is what limits its frame rate, so this costs it about 0.65 ms of every 8 ms frame.
+
+Under Rosetta rdtsc takes 7 ns and counts nanoseconds in steps of 41 ns, on every core.
+It has a different origin from mach_continuous_time(), so the Unix side works out the
+difference once per process, and the PE side adds it. Counter values are the same ones
+as before to within about 200 ns, which tests/probes/qpccheck.c checks in this project.
+
+The Unix side checks that it runs under Rosetta and measures the rate, and if anything
+looks different the counter takes the old path. The PE side compares the two once a
+second, so that it follows the system counter after the Mac has slept, and only ever
+moves forward. This is for 64-bit programs only. WINE_QPC_NO_TSC=1 turns this off.
+
+--- a/dlls/ntdll/time.c
++++ b/dlls/ntdll/time.c
+@@ -375,12 +375,63 @@
+     WINE_UNIX_CALL( unix_system_time_precise, &ret );
+     return ret;
+ }
++
++#ifdef __x86_64__
++
++#define TSC_CHECK_INTERVAL 1000000000  /* in TSC counts, which are nanoseconds */
++#define TSC_MAX_ERROR      10000       /* in 100 ns ticks */
++
++static volatile LONGLONG tsc_bias;
++static volatile ULONGLONG tsc_checked;
++static volatile LONG tsc_state;  /* 0: not known yet, 1: usable, -1: not usable */
+ 
++/* Read the counter without leaving Windows code. See tsc_counter_bias() for why. */
++static inline BOOL tsc_counter( LARGE_INTEGER *counter )
++{
++    LARGE_INTEGER real;
++    ULONGLONG tsc;
++    LONGLONG bias;
++
++    if (tsc_state < 0) return FALSE;
++    if (!tsc_state)
++    {
++        if (WINE_UNIX_CALL( unix_tsc_counter_bias, &bias ))
++        {
++            tsc_state = -1;
++            return FALSE;
++        }
++        tsc_bias = bias;
++        tsc_checked = __builtin_ia32_rdtsc();
++        tsc_state = 1;
++    }
++
++    tsc = __builtin_ia32_rdtsc();
++    if (tsc - tsc_checked >= TSC_CHECK_INTERVAL)
++    {
++        /* the system counter keeps going while the Mac sleeps, so catch up with it after that */
++        tsc_checked = tsc;
++        NtQueryPerformanceCounter( &real, NULL );
++        if (real.QuadPart - (LONGLONG)(tsc + tsc_bias) / 100 > TSC_MAX_ERROR &&
++            !WINE_UNIX_CALL( unix_tsc_counter_bias, &bias ))
++        {
++            tsc_bias = bias;
++            tsc = __builtin_ia32_rdtsc();
++        }
++    }
++    counter->QuadPart = (tsc + tsc_bias) / 100;
++    return TRUE;
++}
++
++#endif
++
+ /******************************************************************************
+  *  RtlQueryPerformanceCounter   [NTDLL.@]
+  */
+ BOOL WINAPI DECLSPEC_HOTPATCH RtlQueryPerformanceCounter( LARGE_INTEGER *counter )
+ {
++#ifdef __x86_64__
++    if (tsc_counter( counter )) return TRUE;
++#endif
+     NtQueryPerformanceCounter( counter, NULL );
+     return TRUE;
+ }
+--- a/dlls/ntdll/unix/loader.c
++++ b/dlls/ntdll/unix/loader.c
+@@ -1039,6 +1039,7 @@
+     unixcall_wine_server_handle_to_fd,
+     unixcall_wine_spawnvp,
+     system_time_precise,
++    tsc_counter_bias,
+ };
+ 
+ 
+@@ -1057,6 +1058,7 @@
+     wow64_wine_server_handle_to_fd,
+     wow64_wine_spawnvp,
+     system_time_precise,
++    tsc_counter_bias,
+ };
+ 
+ #endif  /* _WIN64 */
+--- a/dlls/ntdll/unix/sync.c
++++ b/dlls/ntdll/unix/sync.c
+@@ -56,6 +56,7 @@
+ #include <time.h>
+ #ifdef __APPLE__
+ # include <mach/mach_time.h>
++# include <sys/sysctl.h>
+ #endif
+ #ifdef HAVE_KQUEUE
+ # include <sys/event.h>
+@@ -2622,7 +2623,46 @@
+ 
+ /******************************************************************************
+  *              RtlGetSystemTimePrecise (NTDLL.@)
++ */
++/***********************************************************************
++ *           tsc_counter_bias
++ *
++ * Under Rosetta the TSC counts nanoseconds and reading it stays in translated code,
++ * while NtQueryPerformanceCounter has to switch GSBASE twice, which takes about 400 ns.
++ * Return what to add to the TSC to get the nanoseconds that monotonic_counter() uses.
+  */
++NTSTATUS tsc_counter_bias( void *args )
++{
++#if defined(__APPLE__) && defined(__x86_64__)
++    LONGLONG *bias = args;
++    mach_timebase_info_data_t timebase;
++    ULONGLONG tsc, start, elapsed;
++    size_t size = sizeof(int);
++    int translated = 0, i;
++
++    if (getenv( "WINE_QPC_NO_TSC" )) return STATUS_NOT_SUPPORTED;
++    if (sysctlbyname( "sysctl.proc_translated", &translated, &size, NULL, 0 ) || !translated)
++        return STATUS_NOT_SUPPORTED;
++    mach_timebase_info( &timebase );
++    if (timebase.numer != timebase.denom) return STATUS_NOT_SUPPORTED;
++
++    /* being preempted here would look like a wrong rate, so allow for that */
++    for (i = 0; i < 3; i++)
++    {
++        tsc = __builtin_ia32_rdtsc();
++        start = mach_absolute_time();
++        do elapsed = mach_absolute_time() - start; while (elapsed < 20000);
++        tsc = __builtin_ia32_rdtsc() - tsc;
++        if (tsc >= elapsed - elapsed / 100 && tsc <= elapsed + elapsed / 100)
++        {
++            *bias = mach_continuous_time() - __builtin_ia32_rdtsc();
++            return STATUS_SUCCESS;
++        }
++    }
++#endif
++    return STATUS_NOT_SUPPORTED;
++}
++
+ NTSTATUS system_time_precise( void *args )
+ {
+     LONGLONG *ret = args;
+--- a/dlls/ntdll/unix/unix_private.h
++++ b/dlls/ntdll/unix/unix_private.h
+@@ -295,6 +295,7 @@
+ extern unsigned int alloc_object_attributes( const OBJECT_ATTRIBUTES *attr, struct object_attributes **ret,
+                                              data_size_t *ret_len );
+ extern NTSTATUS system_time_precise( void *args );
++extern NTSTATUS tsc_counter_bias( void *args );
+ 
+ extern void *anon_mmap_fixed( void *start, size_t size, int prot, int flags );
+ extern void *anon_mmap_alloc( size_t size, int prot );
+--- a/dlls/ntdll/unixlib.h
++++ b/dlls/ntdll/unixlib.h
+@@ -76,6 +76,7 @@
+     unix_wine_server_handle_to_fd,
+     unix_wine_spawnvp,
+     unix_system_time_precise,
++    unix_tsc_counter_bias,
+ };
+ 
+ extern unixlib_handle_t __wine_unixlib_handle;

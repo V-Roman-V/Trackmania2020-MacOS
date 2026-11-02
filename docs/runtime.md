@@ -1,6 +1,6 @@
 # Runtime
 
-The runtime starts from the Wine 11.17 runtime of [TrackMania-MacOS](https://github.com/vakesz/TrackMania-MacOS), which is x86_64 and runs under Rosetta 2 with new WoW64 and MoltenVK. This project adds four Wine patches and builds DXVK for 32-bit and 64-bit programs. [Building](building.md) explains how the pieces are put together.
+The runtime starts from the Wine 11.17 runtime of [TrackMania-MacOS](https://github.com/vakesz/TrackMania-MacOS), which is x86_64 and runs under Rosetta 2 with new WoW64 and MoltenVK. This project adds five Wine patches and builds DXVK for 32-bit and 64-bit programs. [Building](building.md) explains how the pieces are put together.
 
 ## Patches
 
@@ -14,6 +14,7 @@ The runtime starts from the Wine 11.17 runtime of [TrackMania-MacOS](https://git
 | D9VK 0003 | Replace two geometry shaders with vertex shaders that pick the render target layer | Reading back every layer with the game's own shaders before and after; shadows correct in play |
 | Wine 0004 | Queue Vulkan calls that return nothing and send them across together | `tests/probes/drawbench.c` before and after; `tests/probes/drawcheck.c` gives the same picture and compute result, and dropping any queued call changes them |
 | D9VK 0004 | Fetch descriptor sets several at a time | Same two probes |
+| Wine 0005 | Read the performance counter with `rdtsc` under Rosetta, without crossing to the Unix side | `tests/probes/qpccheck.c`, which fails if the counter starts wrong, stops catching up, or runs at the wrong rate |
 
 Sign-in started to pass after D9VK 0001 and a fresh browser profile for Connect were tried together, so it isn't known which of the two mattered. If sign-in breaks after a Connect update, look at both first.
 
@@ -36,6 +37,16 @@ DXVK is Windows code and MoltenVK is Unix code, so every Vulkan call between the
 A draw took four such calls: `vkAllocateDescriptorSets`, `vkUpdateDescriptorSetWithTemplate`, `vkCmdBindDescriptorSets` and `vkCmdDraw`. That was about 1.4 µs of the 2 µs that DXVK's render thread spent on it. Wine 0004 takes care of the three that return nothing, and D9VK 0004 of the one that does.
 
 Calls that go through wineserver cost more. In `tests/probes/callbench.c`, setting or waiting on an event takes 7 to 9 µs, and waking another thread with an event takes 22 µs. Locks stay in the process and take 4 to 13 ns.
+
+`TM2020_TRACE=trackmania.exe:+syscall bin/tm2020 diag` records which calls the game makes, for the game alone. Each call adds about 130 bytes to `connect.log` and about 3.7 µs, so keep that run short and don't read its frame rate as normal. Two minutes of driving made 2.9 GB. In a race the game made about 2,370 calls per frame, and about 1,830 of them were on its busiest thread:
+
+| Call | Per frame, busiest thread | Each | Per frame |
+| --- | --- | --- | --- |
+| `QueryPerformanceCounter` | 1,590 | 406 ns | 0.65 ms |
+| `MsgWaitForMultipleObjectsEx` with no wait | 27 | 8.8 µs | 0.24 ms |
+| `ReadProcessMemory` on itself, mostly 1 byte | 121 | 815 ns | 0.10 ms |
+
+These counts come from one traced run on one map. The clock count follows frames and not time: it stays near 1,000 per frame in menus at 95 and at 127 FPS. Wine 0005 removes the first row. The second goes through wineserver for a plain "nothing here" answer. The third stays, because moving it to the Windows side would turn a failed read into an exception that the game would see.
 
 ## Connect during play
 
