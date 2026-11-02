@@ -4,6 +4,7 @@
 
 - `bin/tm2020` installs and starts Ubisoft Connect, and gives DXVK to the programs that need it.
 - `tools/build-runtime.sh` builds the runtime.
+- `tools/connect-idle.c` minimizes Connect during play, and is built into the runtime.
 - `tools/session.py` records and reports a play session for `bin/tm2020 diag` and `report`.
 - `config/dxvk.conf` holds the DXVK settings for each program.
 - `patches/wine` and `patches/d9vk` are the changes to Wine and DXVK. [Runtime](runtime.md) describes each one.

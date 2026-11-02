@@ -32,6 +32,7 @@ LOCAL_STATE="${WINEPREFIX}/drive_c/users/$(id -un)/AppData/Local/Ubisoft Game La
 readonly LOCAL_STATE
 readonly WINE="${TM2020_RUNTIME}/bin/wine"
 readonly DXVK_DLLS="${TM2020_RUNTIME}/lib/dxvk"
+readonly CONNECT_IDLE="${TM2020_RUNTIME}/libexec/connect-idle.exe"
 readonly WINDOWS_DIR="${WINEPREFIX}/drive_c/windows"
 
 require_runtime() {
@@ -121,6 +122,10 @@ prepare_connect() {
   use_dxvk UplayWebCore.exe x32 syswow64
   use_dxvk Trackmania.exe x64 system32
   mkdir -p "$LOGS" "${TM2020_ROOT}/dxvk-cache"
+  # Older runtimes don't have this. See tools/connect-idle.c.
+  if test -f "$CONNECT_IDLE"; then
+    "$WINE" "$CONNECT_IDLE" >/dev/null 2>&1 &
+  fi
 }
 
 case "${1:-}" in

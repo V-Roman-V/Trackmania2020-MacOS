@@ -58,6 +58,7 @@ install_runtime() {
     mkdir -p "${partial}/lib/dxvk/${bits}"
     cp "${BUILD}/d9vk-${bits}/src/dxgi/dxgi.dll" "${BUILD}/d9vk-${bits}/src/d3d11/d3d11.dll" "${partial}/lib/dxvk/${bits}/"
   done
+  x86_64-w64-mingw32-gcc -O2 -mwindows -o "${partial}/libexec/connect-idle.exe" "${PROJECT}/tools/connect-idle.c"
   mv "$partial" "$TM2020_RUNTIME"
 }
 

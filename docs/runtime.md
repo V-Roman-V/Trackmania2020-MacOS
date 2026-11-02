@@ -27,6 +27,12 @@ WebGL draws offscreen, so it doesn't need the window. It runs on DXVK in Connect
 
 The game is a normal 64-bit D3D11 program. It gets DXVK from `bin/tm2020`, which sets DLL overrides for `UplayWebCore.exe` and `Trackmania.exe` only. Everything else in the prefix keeps Wine's own D3D, which stops at feature level 9_3 on this GPU.
 
+## Connect during play
+
+Connect uses more than a core with its window open, even with nothing happening, because each frame goes through software compositing and two copies. Minimizing the window takes that from about 120% of a core to 1%. `tools/connect-idle.c` does this when `Trackmania.exe` starts and restores the window when it exits, without activating anything, so it can't take focus from the game. It ends by itself two minutes after Connect is gone. In a 36-minute session Connect's median CPU use was 0%.
+
+macOS doesn't turn Game Mode on for this setup. RunningBoard sees each Wine process as `anon<wine>`, with no app identity, and Connect starts the game, so an app bundle around Wine doesn't change that. `xcrun gamepolicyctl game-mode set on` forces it on for the whole system, and `set auto` goes back. That has not been measured.
+
 ## Settings
 
 `config/dxvk.conf` has one section for each program. `UplayWebCore.exe` reports an AMD Radeon RX 6800 XT and has the state cache off, since Connect's folder isn't ours to write in. `Trackmania.exe` sees the real GPU and has `dxvk.enableAsync` on, so pipelines compile in the background and do not stall the render thread. A draw that needs an unfinished pipeline is skipped, so geometry can be missing for a moment on a first visit.

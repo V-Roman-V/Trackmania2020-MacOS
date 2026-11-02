@@ -56,7 +56,8 @@ check_network 1 $'HTTP/1.1 403 Forbidden\r\n\r\n<title>Application Control Viola
 check_network 0 $'HTTP/1.1 403 Forbidden\r\nServer: AkamaiGHost\r\n\r\n' 'OPEN'
 check_network 1 $'HTTP/1.1 403 Forbidden\r\nServer: filter\r\n\r\n<title>Page</title>' 'UNKNOWN'
 
-mkdir -p "${TM2020_RUNTIME}/bin" "${TM2020_RUNTIME}/lib/dxvk/x32" "${TM2020_RUNTIME}/lib/dxvk/x64"
+mkdir -p "${TM2020_RUNTIME}/bin" "${TM2020_RUNTIME}/lib/dxvk/x32" "${TM2020_RUNTIME}/lib/dxvk/x64" "${TM2020_RUNTIME}/libexec"
+touch "${TM2020_RUNTIME}/libexec/connect-idle.exe"
 cat >"${TM2020_RUNTIME}/bin/wine" <<SH
 #!/bin/sh
 echo "\$WINEDLLOVERRIDES \$*" >>"${WORK}/wine.log"
@@ -77,8 +78,8 @@ cmp -s "${TM2020_RUNTIME}/lib/dxvk/x32/dxgi.dll" "${PREFIX}/drive_c/windows/sysw
   fail 'the 32-bit DXVK is not in syswow64'
 grep -qF 'AppDefaults\UplayWebCore.exe\DllOverrides' "${WORK}/wine.log" || fail 'no DLL override for UplayWebCore.exe'
 grep -qF 'AppDefaults\Trackmania.exe\DllOverrides' "${WORK}/wine.log" || fail 'no DLL override for Trackmania.exe'
-tail -1 "${WORK}/wine.log" | grep -qF 'UbisoftConnect.exe' || fail 'Connect was not started last'
-tail -1 "${WORK}/wine.log" | grep -qF 'mscoree,mshtml=d' || fail 'Wine can offer to install Mono'
+grep -F 'UbisoftConnect.exe' "${WORK}/wine.log" | grep -qF 'mscoree,mshtml=d' || fail 'Wine can offer to install Mono'
+grep -qF 'connect-idle.exe' "${WORK}/wine.log" || fail 'the helper was not started'
 grep -qF '"hardware_acceleration_mode": {"enabled": false}' \
   "${PREFIX}/drive_c/users/$(id -un)/AppData/Local/Ubisoft Game Launcher/cache/http2/Local State" ||
   fail 'software compositing is not set'
