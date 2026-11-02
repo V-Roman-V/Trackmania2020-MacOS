@@ -55,6 +55,18 @@ bin/tm2020 connect
 
 To see the frame rate in the game, start Connect with `DXVK_HUD=fps,frametimes bin/tm2020 connect`.
 
+## Performance
+
+Three changes make the game cheaper to run, and none of them touches a game setting.
+
+**Connect rests while you play.** Connect keeps redrawing its window behind the game, which costs more than a whole core. It stops when its window is minimized, so a small helper minimizes it when the game starts and brings it back when the game closes.
+
+**Fewer switches into Wine.** Every Vulkan call from DXVK has to switch from Windows code to Unix code, and under Rosetta each switch takes about 390 ns, which added up to most of the work of DXVK's render thread. Calls that return nothing now wait in a queue and go across together. To compare with the old way, start Connect with `WINEVULKAN_NO_BATCH=1 bin/tm2020 connect`.
+
+**Reading the clock stays in Windows code.** The game reads the clock about 1,900 times per frame, and each read used to be one of those switches. Under Rosetta the same time can be read with one fast instruction, which takes about 9 ns where the switch took 400 ns. The game also checks its message queue about 27 times per frame, and each check went through Wine's server. It can now read the answer from shared memory, which takes 441 ns where the server took 10 µs. To compare with the old way, start Connect with `WINE_QPC_NO_TSC=1 WINE_MSGWAIT_ASK_SERVER=1 bin/tm2020 connect`. Neither of these has been measured in play yet.
+
+The first two changes are confirmed in play. Connect's median CPU use was 0% over a 36-minute session. On one map with the same settings, the second-busiest game thread went from 5.3 ms to 2.8 ms per frame, and the median went from 119 to 124 FPS. That is one run each, about 12 minutes long. The busiest thread barely changed and looks like the next limit. `bin/tm2020 diag` records what a real session does.
+
 ## Display settings
 
 Disconnect any external display before you start the game. With one connected, the game stays windowed and picking a resolution in its settings does nothing. The reason isn't known yet, and [docs/runtime.md](docs/runtime.md#known-limits) has what was found so far. Without one, real fullscreen worked at 1800×1169 on a 14-inch MacBook Pro.
@@ -102,6 +114,7 @@ Measured on an Apple M5 Pro with macOS 27.0.1 on 2 November 2026. The offline te
 | Metric | Result | Measured |
 | --- | --- | --- |
 | Frame rate | About 120–150 at 1600×900 windowed with Shadows High and 4x MSAA, capped at 150 | In play |
+| Frame rate in fullscreen | Median 123, slowest 10% at 106 or below, at 1800×1169 with Shadows High and 4x MSAA, capped at 150, over 36 minutes; each map's median was between 113 and 149 | In play |
 | Shadows on High | Correct with `patches/d9vk/0003`, almost black without it | In play |
 | Real fullscreen | Works at 1800×1169 with one display | In play |
 | Pipelines the game has used so far | 694 (668 graphics, 26 compute) | In play |
@@ -115,7 +128,10 @@ Measured on an Apple M5 Pro with macOS 27.0.1 on 2 November 2026. The offline te
 | Geometry shaders | 5 in the cache: 2 used in play and stood in for, 3 unsupported | Offline test and play |
 | Light probe layers written | 0 of 3 before `patches/d9vk/0003`, 3 of 3 after | Offline test |
 | HBAO+ layers written | 1 of 16 before `patches/d9vk/0003`, 16 of 16 after | Offline test |
-| Ubisoft Connect CPU use | `upc.exe` 50–75% of one core, GPU process about 22% | Before sign-in |
+| Graphics stack time for 3,000 draws, 1800×1169 with 4x MSAA | 7.5 ms before `patches/wine/0004` and `patches/d9vk/0004`, 3.4 ms after, same picture | Offline test |
+| Ubisoft Connect CPU use | About 120–140% of one core with its window open, 1% with it minimized | Idle |
+| Ubisoft Connect CPU use during play | Median 0% with the helper over 36 minutes | In play |
+| Same map before and after `patches/wine/0004` and `patches/d9vk/0004`, one run each | Median 119 → 124 FPS, slowest 10% at 107 → 114, samples under 110 FPS 16% → 3%, game CPU 274% → 227% of a core, GPU about the same | In play |
 | Game install size | 6.4 GB | On disk |
 
 ## Troubleshooting
