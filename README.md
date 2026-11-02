@@ -4,7 +4,7 @@ A free, open way to run Trackmania (2020) on Apple Silicon Macs with a Wine runt
 
 This is an independent community project, not affiliated with Nadeo or Ubisoft. The game is not redistributed here.
 
-Status: early work. Ubisoft Connect opens, draws its window and signs in on Wine 11.17 with the patches in `patches/wine` and `patches/d9vk` and the workaround below. Trackmania starts and draws its levels on DXVK.
+Status: early work. Ubisoft Connect opens, draws its window and signs in on Wine 11.17 with the patches in `patches/wine` and `patches/d9vk` and the workaround below. Trackmania starts and draws its levels on DXVK. Metal has no geometry shaders, so `patches/d9vk/0003` stands in for the two that the game has been seen using, and three others that it has not used yet stay unsupported.
 
 ## Ubisoft Connect
 

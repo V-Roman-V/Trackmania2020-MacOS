@@ -1,0 +1,330 @@
+Subject: d3d11: Stand in for two geometry shaders with vertex shaders.
+
+Metal has no geometry stage, and MoltenVK drops it without an error. Trackmania's
+light probe pass then draws nothing, because its vertex shader has no outputs, and
+HBAO+ writes all its slices to layer 0. Shaded areas are almost black with shadows
+on, which may come from this.
+
+Both geometry shaders only make a full-screen triangle and pick its render target
+layer, which a vertex shader can do with VK_EXT_shader_viewport_index_layer. Bind
+one in their place, reading the constants the game gives the geometry stage.
+
+--- a/src/d3d11/d3d11_context.cpp
++++ b/src/d3d11/d3d11_context.cpp
+@@ -1486,7 +1486,7 @@ namespace dxvk {
+     if (m_state.vs.shader != shader) {
+       m_state.vs.shader = shader;
+ 
+-      BindShader<DxbcProgramType::VertexShader>(GetCommonShader(shader));
++      BindVertexAndGeometryShaders();
+     }
+   }
+   
+@@ -1912,7 +1912,7 @@ namespace dxvk {
+     if (m_state.gs.shader != shader) {
+       m_state.gs.shader = shader;
+ 
+-      BindShader<DxbcProgramType::GeometryShader>(GetCommonShader(shader));
++      BindVertexAndGeometryShaders();
+     }
+   }
+   
+@@ -3145,6 +3145,20 @@ namespace dxvk {
+   }
+ 
+ 
++  void D3D11DeviceContext::BindVertexAndGeometryShaders() {
++    const D3D11CommonShader* vs = GetCommonShader(m_state.vs.shader.ptr());
++    const D3D11CommonShader* gs = GetCommonShader(m_state.gs.shader.ptr());
++    
++    if (gs != nullptr && gs->GetVsEmulation() != nullptr) {
++      vs = gs->GetVsEmulation();
++      gs = nullptr;
++    }
++    
++    BindShader<DxbcProgramType::VertexShader>(vs);
++    BindShader<DxbcProgramType::GeometryShader>(gs);
++  }
++
++
+   void D3D11DeviceContext::BindFramebuffer() {
+     DxvkRenderTargets attachments;
+     
+@@ -4143,10 +4157,9 @@ namespace dxvk {
+   void D3D11DeviceContext::RestoreState() {
+     BindFramebuffer();
+     
+-    BindShader<DxbcProgramType::VertexShader>   (GetCommonShader(m_state.vs.shader.ptr()));
++    BindVertexAndGeometryShaders();
+     BindShader<DxbcProgramType::HullShader>     (GetCommonShader(m_state.hs.shader.ptr()));
+     BindShader<DxbcProgramType::DomainShader>   (GetCommonShader(m_state.ds.shader.ptr()));
+-    BindShader<DxbcProgramType::GeometryShader> (GetCommonShader(m_state.gs.shader.ptr()));
+     BindShader<DxbcProgramType::PixelShader>    (GetCommonShader(m_state.ps.shader.ptr()));
+     BindShader<DxbcProgramType::ComputeShader>  (GetCommonShader(m_state.cs.shader.ptr()));
+     
+--- a/src/d3d11/d3d11_context.h
++++ b/src/d3d11/d3d11_context.h
+@@ -729,6 +729,8 @@ namespace dxvk {
+     void BindShader(
+       const D3D11CommonShader*                pShaderModule);
+     
++    void BindVertexAndGeometryShaders();
++    
+     void BindFramebuffer();
+     
+     void BindDrawBuffers(
+--- /dev/null
++++ b/src/d3d11/d3d11_gs_emulation.h
+@@ -0,0 +1,166 @@
++#pragma once
++
++#include <cstddef>
++#include <cstdint>
++
++namespace dxvk {
++
++  /**
++   * \brief Vertex shaders that stand in for geometry shaders
++   * 
++   * Metal has no geometry stage, and MoltenVK drops it without an error, which
++   * leaves Trackmania's HBAO+ and light probe passes writing the wrong layers or
++   * nothing. Their geometry shaders only make a full-screen triangle and pick its
++   * render target layer, and a vertex shader can do that too. These read the same
++   * constant buffer, which the game binds to the geometry stage.
++   */
++  struct D3D11GsEmulation {
++    const char*     geometryShader;
++    const uint32_t* code;
++    size_t          size;
++  };
++
++  /* HBAO_plus/CoarseAO_g, vs_5_0:
++   *
++   * cbuffer DrawG : register(b0) {
++   *   float4 f4Jitter; float2 f2Offset; uint uSliceIndex; float padding;
++   * };
++   * struct Out {
++   *   float4 position : SV_Position;
++   *   float2 texcoord : TEXCOORD0;
++   *   uint layer : SV_RenderTargetArrayIndex;
++   * };
++   * Out main(uint id : SV_VertexID) {
++   *   Out o;
++   *   float2 uv = float2((id << 1) & 2, id & 2);
++   *   o.position = float4(uv * float2(2.0, -2.0) + float2(-1.0, 1.0), 0.0, 1.0);
++   *   o.texcoord = uv;
++   *   o.layer = uSliceIndex;
++   *   return o;
++   * }
++   */
++  static const uint32_t g_vsCoarseAo[] = {
++    0x43425844, 0x3fd79feb, 0x848e3b3c, 0x9fb5952a, 0xf7fd4b58, 0x00000001,
++    0x00000510, 0x00000006, 0x00000038, 0x00000258, 0x0000028c, 0x00000314,
++    0x00000464, 0x00000474, 0x46454452, 0x00000218, 0x00000001, 0x00000064,
++    0x00000001, 0x0000003c, 0xfffe0500, 0x00000100, 0x000001f0, 0x31314452,
++    0x0000003c, 0x00000018, 0x00000020, 0x00000028, 0x00000024, 0x0000000c,
++    0x00000000, 0x0000005c, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
++    0x00000000, 0x00000001, 0x00000001, 0x77617244, 0xabab0047, 0x0000005c,
++    0x00000004, 0x0000007c, 0x00000020, 0x00000000, 0x00000000, 0x0000011c,
++    0x00000000, 0x00000010, 0x00000000, 0x0000012c, 0x00000000, 0xffffffff,
++    0x00000000, 0xffffffff, 0x00000000, 0x00000150, 0x00000010, 0x00000008,
++    0x00000000, 0x00000160, 0x00000000, 0xffffffff, 0x00000000, 0xffffffff,
++    0x00000000, 0x00000184, 0x00000018, 0x00000004, 0x00000002, 0x00000198,
++    0x00000000, 0xffffffff, 0x00000000, 0xffffffff, 0x00000000, 0x000001bc,
++    0x0000001c, 0x00000004, 0x00000000, 0x000001cc, 0x00000000, 0xffffffff,
++    0x00000000, 0xffffffff, 0x00000000, 0x694a3466, 0x72657474, 0x6f6c6600,
++    0x00347461, 0x00030001, 0x00040001, 0x00000000, 0x00000000, 0x00000000,
++    0x00000000, 0x00000000, 0x00000000, 0x00000125, 0x664f3266, 0x74657366,
++    0x6f6c6600, 0x00327461, 0x00030001, 0x00020001, 0x00000000, 0x00000000,
++    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000159, 0x696c5375,
++    0x6e496563, 0x00786564, 0x726f7764, 0xabab0064, 0x00130000, 0x00010001,
++    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
++    0x00000190, 0x64646170, 0x00676e69, 0x616f6c66, 0xabab0074, 0x00030000,
++    0x00010001, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
++    0x00000000, 0x000001c4, 0x7263694d, 0x666f736f, 0x52282074, 0x4c482029,
++    0x53204c53, 0x65646168, 0x6f432072, 0x6c69706d, 0x31207265, 0x00312e30,
++    0x4e475349, 0x0000002c, 0x00000001, 0x00000008, 0x00000020, 0x00000000,
++    0x00000006, 0x00000001, 0x00000000, 0x00000101, 0x565f5653, 0x65747265,
++    0x00444978, 0x4e47534f, 0x00000080, 0x00000003, 0x00000008, 0x00000050,
++    0x00000000, 0x00000001, 0x00000003, 0x00000000, 0x0000000f, 0x0000005c,
++    0x00000000, 0x00000000, 0x00000003, 0x00000001, 0x00000c03, 0x00000065,
++    0x00000000, 0x00000004, 0x00000001, 0x00000002, 0x00000e01, 0x505f5653,
++    0x7469736f, 0x006e6f69, 0x43584554, 0x44524f4f, 0x5f565300, 0x646e6552,
++    0x61547265, 0x74656772, 0x61727241, 0x646e4979, 0xab007865, 0x58454853,
++    0x00000148, 0x00010050, 0x00000052, 0x0100086a, 0x04000059, 0x00208e46,
++    0x00000000, 0x00000002, 0x04000060, 0x00101012, 0x00000000, 0x00000006,
++    0x04000067, 0x001020f2, 0x00000000, 0x00000001, 0x03000065, 0x00102032,
++    0x00000001, 0x04000067, 0x00102012, 0x00000002, 0x00000004, 0x02000068,
++    0x00000001, 0x0b00008c, 0x00100012, 0x00000000, 0x00004001, 0x00000001,
++    0x00004001, 0x00000001, 0x0010100a, 0x00000000, 0x00004001, 0x00000000,
++    0x07000001, 0x00100042, 0x00000000, 0x0010100a, 0x00000000, 0x00004001,
++    0x00000002, 0x05000056, 0x00100032, 0x00000000, 0x00100086, 0x00000000,
++    0x0f000032, 0x00102032, 0x00000000, 0x00100046, 0x00000000, 0x00004002,
++    0x40000000, 0xc0000000, 0x00000000, 0x00000000, 0x00004002, 0xbf800000,
++    0x3f800000, 0x00000000, 0x00000000, 0x05000036, 0x00102032, 0x00000001,
++    0x00100046, 0x00000000, 0x08000036, 0x001020c2, 0x00000000, 0x00004002,
++    0x00000000, 0x00000000, 0x00000000, 0x3f800000, 0x06000036, 0x00102012,
++    0x00000002, 0x0020802a, 0x00000000, 0x00000001, 0x0100003e, 0x30494653,
++    0x00000008, 0x00002000, 0x00000000, 0x54415453, 0x00000094, 0x00000008,
++    0x00000001, 0x00000000, 0x00000004, 0x00000001, 0x00000000, 0x00000001,
++    0x00000001, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
++    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
++    0x00000003, 0x00000000, 0x00000001, 0x00000000, 0x00000000, 0x00000000,
++    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
++    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
++  };
++
++  /* Engines/FullTriangle_Batch_g, vs_5_0. Each triangle of the list fills one layer:
++   *
++   * cbuffer ShaderG : register(b0) { uint iSliceStart; float3 Padding; };
++   * struct Out {
++   *   float4 position : SV_Position;
++   *   uint layer : SV_RenderTargetArrayIndex;
++   * };
++   * Out main(uint id : SV_VertexID) {
++   *   Out o;
++   *   uint corner = id % 3;
++   *   o.position = float4(corner == 2 ? 3.03 : -1.01, corner == 1 ? 3.03 : -1.01, 0.0, 1.0);
++   *   o.layer = id / 3 + iSliceStart;
++   *   return o;
++   * }
++   */
++  static const uint32_t g_vsFullTriangleBatch[] = {
++    0x43425844, 0x74805838, 0x46481764, 0x3154f19a, 0xc660d153, 0x00000001,
++    0x00000410, 0x00000006, 0x00000038, 0x000001a0, 0x000001d4, 0x0000023c,
++    0x00000364, 0x00000374, 0x46454452, 0x00000160, 0x00000001, 0x00000064,
++    0x00000001, 0x0000003c, 0xfffe0500, 0x00000100, 0x00000138, 0x31314452,
++    0x0000003c, 0x00000018, 0x00000020, 0x00000028, 0x00000024, 0x0000000c,
++    0x00000000, 0x0000005c, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
++    0x00000000, 0x00000001, 0x00000001, 0x64616853, 0x00477265, 0x0000005c,
++    0x00000002, 0x0000007c, 0x00000010, 0x00000000, 0x00000000, 0x000000cc,
++    0x00000000, 0x00000004, 0x00000002, 0x000000e0, 0x00000000, 0xffffffff,
++    0x00000000, 0xffffffff, 0x00000000, 0x00000104, 0x00000004, 0x0000000c,
++    0x00000000, 0x00000114, 0x00000000, 0xffffffff, 0x00000000, 0xffffffff,
++    0x00000000, 0x696c5369, 0x74536563, 0x00747261, 0x726f7764, 0xabab0064,
++    0x00130000, 0x00010001, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
++    0x00000000, 0x00000000, 0x000000d8, 0x64646150, 0x00676e69, 0x616f6c66,
++    0xab003374, 0x00030001, 0x00030001, 0x00000000, 0x00000000, 0x00000000,
++    0x00000000, 0x00000000, 0x00000000, 0x0000010c, 0x7263694d, 0x666f736f,
++    0x52282074, 0x4c482029, 0x53204c53, 0x65646168, 0x6f432072, 0x6c69706d,
++    0x31207265, 0x00312e30, 0x4e475349, 0x0000002c, 0x00000001, 0x00000008,
++    0x00000020, 0x00000000, 0x00000006, 0x00000001, 0x00000000, 0x00000101,
++    0x565f5653, 0x65747265, 0x00444978, 0x4e47534f, 0x00000060, 0x00000002,
++    0x00000008, 0x00000038, 0x00000000, 0x00000001, 0x00000003, 0x00000000,
++    0x0000000f, 0x00000044, 0x00000000, 0x00000004, 0x00000001, 0x00000001,
++    0x00000e01, 0x505f5653, 0x7469736f, 0x006e6f69, 0x525f5653, 0x65646e65,
++    0x72615472, 0x41746567, 0x79617272, 0x65646e49, 0xabab0078, 0x58454853,
++    0x00000120, 0x00010050, 0x00000048, 0x0100086a, 0x04000059, 0x00208e46,
++    0x00000000, 0x00000001, 0x04000060, 0x00101012, 0x00000000, 0x00000006,
++    0x04000067, 0x001020f2, 0x00000000, 0x00000001, 0x04000067, 0x00102012,
++    0x00000001, 0x00000004, 0x02000068, 0x00000002, 0x0900004e, 0x00100012,
++    0x00000000, 0x00100012, 0x00000001, 0x0010100a, 0x00000000, 0x00004001,
++    0x00000003, 0x0a000020, 0x00100062, 0x00000000, 0x00100006, 0x00000001,
++    0x00004002, 0x00000000, 0x00000002, 0x00000001, 0x00000000, 0x0800001e,
++    0x00102012, 0x00000001, 0x0010000a, 0x00000000, 0x0020800a, 0x00000000,
++    0x00000000, 0x0f000037, 0x00102032, 0x00000000, 0x00100596, 0x00000000,
++    0x00004002, 0x4041eb85, 0x4041eb85, 0x00000000, 0x00000000, 0x00004002,
++    0xbf8147ae, 0xbf8147ae, 0x00000000, 0x00000000, 0x08000036, 0x001020c2,
++    0x00000000, 0x00004002, 0x00000000, 0x00000000, 0x00000000, 0x3f800000,
++    0x0100003e, 0x30494653, 0x00000008, 0x00002000, 0x00000000, 0x54415453,
++    0x00000094, 0x00000006, 0x00000002, 0x00000000, 0x00000003, 0x00000000,
++    0x00000002, 0x00000000, 0x00000001, 0x00000000, 0x00000000, 0x00000000,
++    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
++    0x00000000, 0x00000000, 0x00000001, 0x00000001, 0x00000000, 0x00000000,
++    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
++    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
++    0x00000000, 0x00000000,
++  };
++
++  static const D3D11GsEmulation g_gsEmulations[] = {
++    { "GS_24380d9d247fba1f7009e7307e6bf053bfa2bdf9", g_vsCoarseAo,          sizeof(g_vsCoarseAo)          },
++    { "GS_b9c3bc18d06d3cf4cbb9fb37d6d3851c1432e760", g_vsFullTriangleBatch, sizeof(g_vsFullTriangleBatch) },
++  };
++
++}
+--- a/src/d3d11/d3d11_shader.cpp
++++ b/src/d3d11/d3d11_shader.cpp
+@@ -1,4 +1,5 @@
+ #include "d3d11_device.h"
++#include "d3d11_gs_emulation.h"
+ #include "d3d11_shader.h"
+ 
+ namespace dxvk {
+@@ -73,6 +74,20 @@ namespace dxvk {
+     }
+ 
+     pDevice->GetDXVKDevice()->registerShader(m_shader);
++    
++    for (const auto& emulation : g_gsEmulations) {
++      if (name != emulation.geometryShader)
++        continue;
++      
++      DxbcModuleInfo moduleInfo = *pDxbcModuleInfo;
++      moduleInfo.options.readGeometryConstants = true;
++      
++      DxvkShaderKey key(VK_SHADER_STAGE_VERTEX_BIT,
++        Sha1Hash::compute(emulation.code, emulation.size));
++      
++      m_vsEmulation = std::make_shared<D3D11CommonShader>(
++        pDevice, &key, &moduleInfo, emulation.code, emulation.size);
++    }
+   }
+ 
+   
+--- a/src/d3d11/d3d11_shader.h
++++ b/src/d3d11/d3d11_shader.h
+@@ -1,5 +1,6 @@
+ #pragma once
+ 
++#include <memory>
+ #include <mutex>
+ #include <unordered_map>
+ 
+@@ -51,11 +52,21 @@ namespace dxvk {
+       return m_shader->debugName();
+     }
+     
++    /**
++     * \brief Vertex shader standing in for this geometry shader
++     * \returns The shader, or \c nullptr if there is none
++     */
++    const D3D11CommonShader* GetVsEmulation() const {
++      return m_vsEmulation.get();
++    }
++    
+   private:
+     
+     Rc<DxvkShader> m_shader;
+     Rc<DxvkBuffer> m_buffer;
+     
++    std::shared_ptr<D3D11CommonShader> m_vsEmulation;
++    
+   };
+   
+   
+--- a/src/dxbc/dxbc_compiler.cpp
++++ b/src/dxbc/dxbc_compiler.cpp
+@@ -820,7 +820,9 @@ namespace dxvk {
+     // Compute the DXVK binding slot index for the buffer.
+     // D3D11 needs to bind the actual buffers to this slot.
+     uint32_t bindingId = computeConstantBufferBinding(
+-      m_programInfo.type(), regIdx);
++      m_moduleInfo.options.readGeometryConstants
++        ? DxbcProgramType::GeometryShader
++        : m_programInfo.type(), regIdx);
+     
+     m_module.decorateDescriptorSet(varId, 0);
+     m_module.decorateBinding(varId, bindingId);
+--- a/src/dxbc/dxbc_options.h
++++ b/src/dxbc/dxbc_options.h
+@@ -57,6 +57,10 @@ namespace dxvk {
+     /// Assume global flag RefactoringAllowed on all shaders
+     bool refactoringAllowed = false;
+ 
++    /// Bind constant buffers as a geometry shader would. For
++    /// a vertex shader that stands in for a geometry shader.
++    bool readGeometryConstants = false;
++
+     /// Insert memory barriers after TGSM stoes
+     bool forceTgsmBarriers = false;
+ 
