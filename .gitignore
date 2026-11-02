@@ -1,0 +1,6 @@
+.DS_Store
+*.log
+.build/
+__pycache__/
+.ruff_cache/
+upstream/
