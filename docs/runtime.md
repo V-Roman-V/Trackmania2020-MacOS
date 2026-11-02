@@ -1,6 +1,6 @@
 # Runtime
 
-The runtime starts from the Wine 11.17 runtime of [TrackMania-MacOS](https://github.com/vakesz/TrackMania-MacOS), which is x86_64 and runs under Rosetta 2 with new WoW64 and MoltenVK. This project adds five Wine patches and builds DXVK for 32-bit and 64-bit programs. [Building](building.md) explains how the pieces are put together.
+The runtime starts from the Wine 11.17 runtime of [TrackMania-MacOS](https://github.com/vakesz/TrackMania-MacOS), which is x86_64 and runs under Rosetta 2 with new WoW64 and MoltenVK. This project adds six Wine patches and builds DXVK for 32-bit and 64-bit programs. [Building](building.md) explains how the pieces are put together.
 
 ## Patches
 
@@ -15,6 +15,7 @@ The runtime starts from the Wine 11.17 runtime of [TrackMania-MacOS](https://git
 | Wine 0004 | Queue Vulkan calls that return nothing and send them across together | `tests/probes/drawbench.c` before and after; `tests/probes/drawcheck.c` gives the same picture and compute result, and dropping any queued call changes them |
 | D9VK 0004 | Fetch descriptor sets several at a time | Same two probes |
 | Wine 0005 | Read the performance counter with `rdtsc` under Rosetta, without crossing to the Unix side | `tests/probes/qpccheck.c`, which fails if the counter starts wrong, stops catching up, or runs at the wrong rate |
+| Wine 0006 | Answer a look at the message queue with no timeout from shared memory, without asking wineserver | `tests/probes/msgcheck.c` gives the same 19 answers as before, and changes if the shortcut is broken in any of four ways |
 
 Sign-in started to pass after D9VK 0001 and a fresh browser profile for Connect were tried together, so it isn't known which of the two mattered. If sign-in breaks after a Connect update, look at both first.
 
@@ -46,7 +47,7 @@ Calls that go through wineserver cost more. In `tests/probes/callbench.c`, setti
 | `MsgWaitForMultipleObjectsEx` with no wait | 27 | 8.8 µs | 0.24 ms |
 | `ReadProcessMemory` on itself, mostly 1 byte | 121 | 815 ns | 0.10 ms |
 
-These counts come from one traced run on one map. The clock count follows frames and not time: it stays near 1,000 per frame in menus at 95 and at 127 FPS. Wine 0005 removes the first row. The second goes through wineserver for a plain "nothing here" answer. The third stays, because moving it to the Windows side would turn a failed read into an exception that the game would see.
+These counts come from one traced run on one map. The clock count follows frames and not time: it stays near 1,000 per frame in menus at 95 and at 127 FPS. Wine 0005 removes the first row, and Wine 0006 the second. The third stays, because moving it to the Windows side would turn a failed read into an exception that the game would see.
 
 ## Connect during play
 

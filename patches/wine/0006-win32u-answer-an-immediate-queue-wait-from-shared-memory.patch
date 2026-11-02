@@ -1,0 +1,71 @@
+Subject: win32u: Answer a wait on the queue with no timeout from shared memory.
+
+MsgWaitForMultipleObjectsEx with no handles and no timeout only asks whether the queue
+is signaled, and it does that through wineserver, which takes about 9 us on macOS.
+Trackmania does this about 27 times per frame on its busiest thread, which comes to
+about 0.24 ms of every 8 ms frame.
+
+The queue's sync object is manual-reset and the server sets it from bits that are also
+in shared memory, so waiting on it has no effect on it. Driver events and hardware
+messages are handled before this point, as they were. Look at the same bits as
+get_queue_status() in the server, and go to the server as before if the masks there
+aren't ours or if a bit is set, so that only the plain "nothing here" answer changes.
+
+Alertable waits still go to the server, for their APCs. tests/probes/msgcheck.c in this
+project checks that the answers stay the same. WINE_MSGWAIT_ASK_SERVER=1 turns this off.
+
+--- a/dlls/win32u/message.c
++++ b/dlls/win32u/message.c
+@@ -3343,6 +3343,23 @@
+     return signaled;
+ }
+ 
++/* whether the server would find the queue not signaled, with these masks */
++static BOOL check_queue_idle( UINT wake_mask, UINT changed_mask )
++{
++    struct object_lock lock = OBJECT_LOCK_INIT;
++    const queue_shm_t *queue_shm;
++    BOOL idle = FALSE;
++    UINT status;
++
++    while ((status = get_shared_queue( &lock, &queue_shm )) == STATUS_PENDING)
++        idle = queue_shm->wake_mask == wake_mask && queue_shm->changed_mask == changed_mask &&
++               !(queue_shm->wake_bits & wake_mask) && !(queue_shm->changed_bits & changed_mask) &&
++               !queue_shm->internal_bits;
++    if (status) return FALSE;
++
++    return idle;
++}
++
+ static BOOL process_driver_events( UINT events_mask, UINT wake_mask, UINT changed_mask )
+ {
+     BOOL drained = FALSE;
+@@ -3407,6 +3424,7 @@
+ /* wait for message or signaled handle */
+ static DWORD wait_message( DWORD count, const HANDLE *handles, DWORD timeout, DWORD wake_mask, DWORD changed_mask, DWORD flags )
+ {
++    static int ask_server = -1;
+     struct thunk_lock_params params = {.dispatch.callback = thunk_lock_callback};
+     WAIT_TYPE type = flags & MWMO_WAITALL ? WaitAll : WaitAny;
+     LARGE_INTEGER time, now, *abs;
+@@ -3431,9 +3449,18 @@
+     process_driver_events( QS_ALLINPUT, wake_mask, changed_mask );
+     if (!(changed_mask & QS_SMRESULT) && (event = get_user_thread_info()->idle_event)) NtSetEvent( event, NULL );
+ 
+-    do ret = NtWaitForMultipleObjects( count, handles, type, !!(flags & MWMO_ALERTABLE), abs );
+-    while (ret == count - 1 && !process_driver_events( QS_ALLINPUT, wake_mask, changed_mask ));
++    if (ask_server < 0) ask_server = getenv( "WINE_MSGWAIT_ASK_SERVER" ) != NULL;
+ 
++    /* the only handle is the queue, whose state is in shared memory */
++    if (count == 1 && !timeout && !(flags & MWMO_ALERTABLE) && !ask_server &&
++        check_queue_idle( wake_mask, changed_mask ))
++        ret = WAIT_TIMEOUT;
++    else
++    {
++        do ret = NtWaitForMultipleObjects( count, handles, type, !!(flags & MWMO_ALERTABLE), abs );
++        while (ret == count - 1 && !process_driver_events( QS_ALLINPUT, wake_mask, changed_mask ));
++    }
++
+     if (HIWORD(ret)) /* is it an error code? */
+     {
+         RtlSetLastWin32Error( RtlNtStatusToDosError(ret) );

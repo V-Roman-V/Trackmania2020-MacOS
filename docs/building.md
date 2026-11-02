@@ -69,6 +69,7 @@ export WINEPREFIX="$PWD/prefix" WINEDLLOVERRIDES='dxgi,d3d11,d3dcompiler_47=n;ms
 | `drawbench.exe <draws> <frames>` | What a frame costs through DXVK, MoltenVK and Metal, with a checksum of the picture |
 | `drawcheck.exe` | A checksum of a scene that uses every call Wine 0004 queues. It has to be the same with `WINEVULKAN_NO_BATCH=1` |
 | `qpccheck.exe` | Whether `QueryPerformanceCounter` agrees with the system call behind it, never goes back, and matches another process. Prints what one read costs. Every line has to say `ok`, with and without `WINE_QPC_NO_TSC=1` |
+| `msgcheck.exe` | What `MsgWaitForMultipleObjectsEx` answers when it isn't asked to wait. Standard output has to be the same with `WINE_MSGWAIT_ASK_SERVER=1` |
 
 To see what the game itself asks for, `bin/tm2020 connect` writes Wine's output to `~/Games/TM2020/logs/connect.log`. After a run, count `Failed to compile pipeline` and `Shader library compile failed` there. Both should be zero.
 
