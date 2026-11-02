@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# Run Ubisoft Connect for Trackmania 2020 in its own Wine prefix.
+set -euo pipefail
+
+: "${TM2020_ROOT:=${HOME}/Games/TM2020}"
+: "${TM2020_SUPPORT:=${HOME}/Library/Application Support/Trackmania2020}"
+: "${TM2020_CACHE:=${HOME}/Library/Caches/Trackmania2020}"
+: "${TM2020_RUNTIME:=${TM2020_SUPPORT}/runtime/0.1.0-dev}"
+
+export WINEPREFIX="${TM2020_ROOT}/prefix"
+export WINEDEBUG="${WINEDEBUG:-fixme-all}"
+
+readonly INSTALLER_URL="https://static3.cdn.ubi.com/orbit/launcher_installer/UbisoftConnectInstaller.exe"
+readonly INSTALLER="${TM2020_CACHE}/UbisoftConnectInstaller.exe"
+readonly CONNECT_EXE='C:\Program Files (x86)\Ubisoft\Ubisoft Game Launcher\UbisoftConnect.exe'
+readonly CONNECT_UNIX="${WINEPREFIX}/drive_c/Program Files (x86)/Ubisoft/Ubisoft Game Launcher/UbisoftConnect.exe"
+readonly LOGS="${TM2020_ROOT}/logs"
+readonly WINE="${TM2020_RUNTIME}/bin/wine"
+
+install_connect() {
+  mkdir -p "$TM2020_CACHE" "$LOGS"
+  if ! test -f "$INSTALLER"; then
+    curl --fail --location --retry 3 --output "${INSTALLER}.partial" "$INSTALLER_URL"
+    mv "${INSTALLER}.partial" "$INSTALLER"
+  fi
+  if ! test -d "$WINEPREFIX"; then
+    WINEDLLOVERRIDES="mscoree,mshtml=d" "$WINE" wineboot -i
+    "${TM2020_RUNTIME}/bin/wineserver" -w
+    # The Porting Kit setup that Connect started on used wined3d's OpenGL backend.
+    "$WINE" reg add 'HKCU\Software\Wine\Direct3D' /v renderer /t REG_SZ /d gl /f
+    # Crashes go to the log as backtraces, not to a dialog.
+    "$WINE" reg add 'HKCU\Software\Wine\WineDbg' /v ShowCrashDialog /t REG_DWORD /d 0 /f
+  fi
+  "$WINE" start /wait /unix "$INSTALLER" /S
+}
+
+case "${1:-}" in
+  install)
+    install_connect
+    ;;
+  connect)
+    test -f "$CONNECT_UNIX" || install_connect
+    mkdir -p "$LOGS"
+    exec "$WINE" "$CONNECT_EXE" >"${LOGS}/connect.log" 2>&1
+    ;;
+  stop)
+    "${TM2020_RUNTIME}/bin/wineserver" -k
+    ;;
+  *)
+    echo "usage: $(basename "$0") install|connect|stop" >&2
+    exit 2
+    ;;
+esac
