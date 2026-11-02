@@ -65,7 +65,7 @@ macOS doesn't turn Game Mode on for this setup. RunningBoard sees each Wine proc
 
 **Fullscreen and a second display.** With a second display connected, the game never calls `SetFullscreenState`, stays windowed, and picking a resolution in its settings does nothing. With only the laptop panel, it switched to real fullscreen about 15 seconds after starting. Both were seen once, and the two runs also had different saved display settings, so this still needs a clean comparison. Why a second display stops the game from asking is not known. The mode lists look fine in both cases, and DXVK reports no errors.
 
-**A fullscreen hang in Wine.** `tests/probes/fsprobe.c` calls `SetFullscreenState` directly. With a second display connected, the call did not return within 13.7 seconds, although the display mode had changed. The suspect is `apply_display_settings` in win32u, which waits for explorer.exe's restorer window with no timeout, but that is not confirmed. The game does not reach this code with two displays and did not hang with one.
+**A fullscreen hang in Wine.** `tests/probes/fsprobe.c` calls `SetFullscreenState` directly, and the call doesn't return, with or without a second display, although the display mode changes. The suspect is `apply_display_settings` in win32u, which waits for explorer.exe's restorer window with no timeout, but that is not confirmed. The game goes through the same call without hanging, so something about the probe's setup matters.
 
 **winemac and other displays.** `macdrv_ChangeDisplaySettings` only handles the main display, so a game can't change the mode of an external one.
 
