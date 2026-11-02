@@ -7,8 +7,14 @@ set -euo pipefail
 : "${TM2020_CACHE:=${HOME}/Library/Caches/Trackmania2020}"
 : "${TM2020_RUNTIME:=${TM2020_SUPPORT}/runtime/0.1.0-dev}"
 
+readonly PROJECT="$(cd "$(dirname "$0")/.." && pwd)"
+readonly DXVK_CONF="${PROJECT}/config/dxvk.conf"
+
 export WINEPREFIX="${TM2020_ROOT}/prefix"
 export WINEDEBUG="${WINEDEBUG:-fixme-all}"
+export DXVK_CONFIG_FILE="${DXVK_CONFIG_FILE:-Z:${DXVK_CONF//\//\\}}"
+export DXVK_LOG_LEVEL="${DXVK_LOG_LEVEL:-warn}"
+export DXVK_LOG_PATH="${DXVK_LOG_PATH:-none}"
 
 readonly INSTALLER_URL="https://static3.cdn.ubi.com/orbit/launcher_installer/UbisoftConnectInstaller.exe"
 readonly INSTALLER="${TM2020_CACHE}/UbisoftConnectInstaller.exe"
@@ -17,6 +23,8 @@ readonly CONNECT_UNIX="${WINEPREFIX}/drive_c/Program Files (x86)/Ubisoft/Ubisoft
 readonly LOGS="${TM2020_ROOT}/logs"
 readonly LOCAL_STATE="${WINEPREFIX}/drive_c/users/${USER}/AppData/Local/Ubisoft Game Launcher/cache/http2/Local State"
 readonly WINE="${TM2020_RUNTIME}/bin/wine"
+readonly DXVK_DLLS="${TM2020_RUNTIME}/lib/dxvk"
+readonly WINDOWS_DIR="${WINEPREFIX}/drive_c/windows"
 
 install_connect() {
   mkdir -p "$TM2020_CACHE" "$LOGS"
@@ -55,6 +63,21 @@ if state.get('hardware_acceleration_mode') != {'enabled': False}:
 PY
 }
 
+# Wine's D3D11 stops at feature level 9_3 on this GPU, so the programs that need
+# more get DXVK, one executable at a time. Everything else keeps Wine's own.
+use_dxvk() {
+  local exe="$1" bits="$2" system="$3" dll
+  for dll in d3d11 dxgi; do
+    cmp -s "${DXVK_DLLS}/${bits}/${dll}.dll" "${WINDOWS_DIR}/${system}/${dll}.dll" ||
+      cp -f "${DXVK_DLLS}/${bits}/${dll}.dll" "${WINDOWS_DIR}/${system}/${dll}.dll"
+  done
+  if ! grep -qF "AppDefaults\\\\${exe}\\\\DllOverrides" "${WINEPREFIX}/user.reg"; then
+    for dll in d3d11 dxgi; do
+      "$WINE" reg add "HKCU\\Software\\Wine\\AppDefaults\\${exe}\\DllOverrides" /v "$dll" /t REG_SZ /d native /f >/dev/null
+    done
+  fi
+}
+
 case "${1:-}" in
   install)
     install_connect
@@ -62,6 +85,9 @@ case "${1:-}" in
   connect)
     test -f "$CONNECT_UNIX" || install_connect
     use_software_compositing
+    # patches/wine/0003 moves WebGL in Connect's GPU process to D3D11, which
+    # DXVK answers for with the identity in config/dxvk.conf.
+    use_dxvk UplayWebCore.exe x32 syswow64
     mkdir -p "$LOGS"
     exec "$WINE" "$CONNECT_EXE" >"${LOGS}/connect.log" 2>&1
     ;;

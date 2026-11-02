@@ -1,0 +1,70 @@
+Subject: kernelbase: Keep WebGL on D3D11 in Ubisoft Connect's GPU process.
+
+Connect composites in software here, since its GPU process can't draw into
+the window of another process, and Chromium then runs WebGL on SwiftShader.
+Ubisoft's sign-in rejects that renderer. WebGL draws offscreen, so it doesn't
+need the window, but Connect drops Chromium switches, and the only place left
+to change this is the command line of the GPU process.
+
+--- a/dlls/kernelbase/process.c
++++ b/dlls/kernelbase/process.c
+@@ -502,6 +502,37 @@ done:
+     return ret;
+ }
+ 
++/**********************************************************************
++ *           webcore_gpu_cmdline
++ *
++ * Chromium's GPU process can't draw into Ubisoft Connect's window here, so
++ * Connect has to composite in software, and that leaves WebGL on SwiftShader.
++ * WebGL draws offscreen, so it can stay on D3D11. Connect drops Chromium
++ * switches, which leaves the GPU process's own command line to change this.
++ */
++static WCHAR *webcore_gpu_cmdline( const WCHAR *app_name, const WCHAR *cmdline )
++{
++    static const WCHAR swiftshader[] = L"--use-angle=swiftshader-webgl";
++    static const WCHAR d3d11[] = L"--use-angle=d3d11";
++    const WCHAR *name = wcsrchr( app_name, '\\' ), *pos;
++    size_t head, tail;
++    WCHAR *ret;
++
++    name = name ? name + 1 : app_name;
++    if (wcsicmp( name, L"UplayWebCore.exe" )) return NULL;
++    if (!wcsstr( cmdline, L"--type=gpu-process" )) return NULL;
++    if (!(pos = wcsstr( cmdline, swiftshader ))) return NULL;
++
++    head = pos - cmdline;
++    tail = lstrlenW( pos + ARRAY_SIZE(swiftshader) - 1 );
++    if (!(ret = RtlAllocateHeap( GetProcessHeap(), 0, (head + ARRAY_SIZE(d3d11) + tail) * sizeof(WCHAR) )))
++        return NULL;
++    memcpy( ret, cmdline, head * sizeof(WCHAR) );
++    memcpy( ret + head, d3d11, sizeof(d3d11) - sizeof(WCHAR) );
++    memcpy( ret + head + ARRAY_SIZE(d3d11) - 1, pos + ARRAY_SIZE(swiftshader) - 1, (tail + 1) * sizeof(WCHAR) );
++    return ret;
++}
++
+ /**********************************************************************
+  *           CreateProcessInternalW   (kernelbase.@)
+  */
+@@ -514,7 +545,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH CreateProcessInternalW( HANDLE token, const WCHAR
+ {
+     const struct proc_thread_attr *handle_list = NULL, *job_list = NULL;
+     WCHAR name[MAX_PATH];
+-    WCHAR *p, *tidy_cmdline = cmd_line;
++    WCHAR *p, *webcore_cmdline, *tidy_cmdline = cmd_line;
+     RTL_USER_PROCESS_PARAMETERS *params = NULL;
+     RTL_USER_PROCESS_INFORMATION rtl_info = { 0 };
+     HANDLE parent = 0, debug = 0;
+@@ -543,6 +574,12 @@ BOOL WINAPI DECLSPEC_HOTPATCH CreateProcessInternalW( HANDLE token, const WCHAR
+         app_name = name;
+     }
+ 
++    if ((webcore_cmdline = webcore_gpu_cmdline( app_name, tidy_cmdline )))
++    {
++        if (tidy_cmdline != cmd_line) HeapFree( GetProcessHeap(), 0, tidy_cmdline );
++        tidy_cmdline = webcore_cmdline;
++    }
++
+     /* Warn if unsupported features are used */
+ 
+     if (flags & (IDLE_PRIORITY_CLASS | HIGH_PRIORITY_CLASS | REALTIME_PRIORITY_CLASS |
