@@ -4,10 +4,10 @@ A free, open way to run Trackmania (2020) on Apple Silicon Macs with a Wine runt
 
 This is an independent community project, not affiliated with Nadeo or Ubisoft. The game is not redistributed here.
 
-Status: early work. Ubisoft Connect starts on Wine 11.17 with the patch in `patches/wine`, but its main window stays empty.
+Status: early work. Ubisoft Connect opens and draws its window on Wine 11.17 with the two patches in `patches/wine`, in software rendering. Ubisoft's sign-in still refuses it.
 
 ## Ubisoft Connect
 
 `bin/tm2020 connect` installs Ubisoft Connect on first use and starts it. `bin/tm2020 stop` stops everything in this prefix.
 
-The prefix lives in `~/Games/TM2020/prefix` and logs in `~/Games/TM2020/logs`. The runtime is for now a copy of the MacTMNF 0.3.0 runtime at `~/Library/Application Support/Trackmania2020/runtime/0.1.0-dev`, with `wow64cpu.dll` rebuilt from the patch.
+The prefix lives in `~/Games/TM2020/prefix` and logs in `~/Games/TM2020/logs`. The runtime is for now a copy of the MacTMNF 0.3.0 runtime at `~/Library/Application Support/Trackmania2020/runtime/0.1.0-dev`, with `wow64cpu.dll` and `win32u.so` rebuilt from the patches.

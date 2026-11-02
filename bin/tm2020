@@ -15,6 +15,7 @@ readonly INSTALLER="${TM2020_CACHE}/UbisoftConnectInstaller.exe"
 readonly CONNECT_EXE='C:\Program Files (x86)\Ubisoft\Ubisoft Game Launcher\UbisoftConnect.exe'
 readonly CONNECT_UNIX="${WINEPREFIX}/drive_c/Program Files (x86)/Ubisoft/Ubisoft Game Launcher/UbisoftConnect.exe"
 readonly LOGS="${TM2020_ROOT}/logs"
+readonly LOCAL_STATE="${WINEPREFIX}/drive_c/users/${USER}/AppData/Local/Ubisoft Game Launcher/cache/http2/Local State"
 readonly WINE="${TM2020_RUNTIME}/bin/wine"
 
 install_connect() {
@@ -34,12 +35,33 @@ install_connect() {
   "$WINE" start /wait /unix "$INSTALLER" /S
 }
 
+# Chromium's GPU process can't reach upc.exe's window through OpenGL here, since
+# winemac has no cross-process GL. Software compositing goes through GDI, which
+# patches/wine/0002 forwards. Connect ignores Chromium switches, so use the pref.
+use_software_compositing() {
+  python3 -I - "$LOCAL_STATE" <<'PY'
+import json, os, sys
+
+path = sys.argv[1]
+state = {}
+if os.path.exists(path):
+    with open(path) as file:
+        state = json.load(file)
+if state.get('hardware_acceleration_mode') != {'enabled': False}:
+    state['hardware_acceleration_mode'] = {'enabled': False}
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, 'w') as file:
+        json.dump(state, file)
+PY
+}
+
 case "${1:-}" in
   install)
     install_connect
     ;;
   connect)
     test -f "$CONNECT_UNIX" || install_connect
+    use_software_compositing
     mkdir -p "$LOGS"
     exec "$WINE" "$CONNECT_EXE" >"${LOGS}/connect.log" 2>&1
     ;;

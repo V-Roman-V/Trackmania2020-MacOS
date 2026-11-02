@@ -1,0 +1,287 @@
+Subject: win32u: Forward drawing on another process's window to its owner.
+
+A window surface is private to the process owning the window, so GDI drawing
+from another process had no visible result. Chromium's GPU process does exactly
+that with software compositing, which left Ubisoft Connect's main window empty
+on macOS, where the driver has no cross-process path like winex11's.
+
+Give such a DC a local surface. On ReleaseDC, copy the changed pixels to a shared
+section and send the owner WM_WINE_REMOTE_SURFACE, which copies them to the real
+window surface. The cost is two copies per frame, so this suits launchers and not
+games. Windows drawn by their own process are not affected.
+
+--- a/dlls/win32u/dce.c
++++ b/dlls/win32u/dce.c
+@@ -806,6 +806,225 @@ static void dump_rdw_flags(UINT flags)
+ #undef RDW_FLAGS
+ }
+ 
++/*******************************************************************
++ * Surface for drawing on a window of another process.
++ *
++ * Window surfaces are private to the process owning the window, so the visible
++ * result of drawing from another process would be lost. This is what Chromium's
++ * GPU process does with software compositing. Draw to a local surface instead,
++ * and have the owner copy the changed pixels to its own surface.
++ */
++struct remote_frame
++{
++    LONG  lock;
++    BOOL  pending;  /* a WM_WINE_REMOTE_SURFACE is on its way to the owner */
++    UINT  width;
++    UINT  height;
++    RECT  dirty;
++    DWORD bits[];
++};
++
++struct remote_surface
++{
++    struct window_surface header;
++    struct list           entry;
++    HANDLE                process;  /* the process owning the window */
++    HANDLE                section;
++    struct remote_frame  *frame;
++};
++
++static struct list remote_surfaces = LIST_INIT( remote_surfaces );
++static pthread_mutex_t remote_surfaces_lock = PTHREAD_MUTEX_INITIALIZER;
++
++static void remote_frame_lock( struct remote_frame *frame )
++{
++    while (InterlockedCompareExchange( &frame->lock, 1, 0 )) NtYieldExecution();
++}
++
++static void remote_frame_unlock( struct remote_frame *frame )
++{
++    InterlockedExchange( &frame->lock, 0 );
++}
++
++static void remote_surface_set_clip( struct window_surface *surface, const RECT *rects, UINT count )
++{
++}
++
++static BOOL remote_surface_flush( struct window_surface *window_surface, const RECT *rect, const RECT *dirty,
++                                  const BITMAPINFO *color_info, const void *color_bits, BOOL shape_changed,
++                                  const BITMAPINFO *shape_info, const void *shape_bits )
++{
++    struct remote_surface *surface = CONTAINING_RECORD( window_surface, struct remote_surface, header );
++    struct remote_frame *frame = surface->frame;
++    UINT width = dirty->right - dirty->left;
++    const DWORD *src = color_bits;
++    HANDLE section;
++    BOOL notify;
++    int y;
++
++    remote_frame_lock( frame );
++    for (y = dirty->top; y < dirty->bottom; y++)
++        memcpy( frame->bits + y * frame->width + dirty->left, src + y * frame->width + dirty->left, width * 4 );
++    union_rect( &frame->dirty, &frame->dirty, dirty );
++    notify = !frame->pending;
++    frame->pending = TRUE;
++    remote_frame_unlock( frame );
++
++    if (notify && !NtDuplicateObject( GetCurrentProcess(), surface->section, surface->process, &section,
++                                      0, 0, DUPLICATE_SAME_ACCESS ))
++        send_notify_message( window_surface->hwnd, WM_WINE_REMOTE_SURFACE, HandleToUlong( section ), 0, FALSE );
++    return TRUE;
++}
++
++static void remote_surface_destroy( struct window_surface *window_surface )
++{
++    struct remote_surface *surface = CONTAINING_RECORD( window_surface, struct remote_surface, header );
++
++    if (surface->frame) NtUnmapViewOfSection( GetCurrentProcess(), surface->frame );
++    if (surface->section) NtClose( surface->section );
++    if (surface->process) NtClose( surface->process );
++}
++
++static const struct window_surface_funcs remote_surface_funcs =
++{
++    remote_surface_set_clip,
++    remote_surface_flush,
++    remote_surface_destroy
++};
++
++static struct window_surface *create_remote_surface( HWND hwnd, const RECT *rect )
++{
++    char buffer[FIELD_OFFSET( BITMAPINFO, bmiColors[256] )];
++    BITMAPINFO *info = (BITMAPINFO *)buffer;
++    OBJECT_ATTRIBUTES attr = {.Length = sizeof(attr)};
++    UINT width = rect->right - rect->left, height = rect->bottom - rect->top;
++    struct remote_surface *surface;
++    LARGE_INTEGER section_size, offset = {{0}};
++    SIZE_T size = 0;
++    CLIENT_ID cid = {0};
++    DWORD pid = 0;
++
++    NtUserGetWindowThread( hwnd, &pid );
++    cid.UniqueProcess = ULongToHandle( pid );
++
++    memset( info, 0, sizeof(*info) );
++    info->bmiHeader.biSize        = sizeof(info->bmiHeader);
++    info->bmiHeader.biWidth       = width;
++    info->bmiHeader.biHeight      = -(int)height; /* top-down */
++    info->bmiHeader.biPlanes      = 1;
++    info->bmiHeader.biBitCount    = 32;
++    info->bmiHeader.biSizeImage   = get_dib_image_size( info );
++    info->bmiHeader.biCompression = BI_RGB;
++
++    if (!(surface = (struct remote_surface *)window_surface_create( sizeof(*surface), &remote_surface_funcs,
++                                                                    hwnd, rect, info, 0 )))
++        return NULL;
++
++    section_size.QuadPart = sizeof(*surface->frame) + info->bmiHeader.biSizeImage;
++    if (NtOpenProcess( &surface->process, PROCESS_DUP_HANDLE, &attr, &cid ) ||
++        NtCreateSection( &surface->section, SECTION_ALL_ACCESS, NULL, &section_size, PAGE_READWRITE, SEC_COMMIT, 0 ) ||
++        NtMapViewOfSection( surface->section, GetCurrentProcess(), (void **)&surface->frame, 0, 0, &offset, &size,
++                            ViewShare, 0, PAGE_READWRITE ))
++    {
++        window_surface_release( &surface->header );
++        return NULL;
++    }
++    surface->frame->width = width;
++    surface->frame->height = height;
++    TRACE( "hwnd %p rect %s -> %p\n", hwnd, wine_dbgstr_rect( rect ), surface );
++    return &surface->header;
++}
++
++/* the returned surface has a reference for the caller */
++static struct window_surface *get_remote_surface( HWND hwnd, const RECT *rect )
++{
++    struct window_surface *ret = NULL;
++    struct remote_surface *surface;
++
++    if (IsRectEmpty( rect )) return NULL;
++
++    pthread_mutex_lock( &remote_surfaces_lock );
++    LIST_FOR_EACH_ENTRY( surface, &remote_surfaces, struct remote_surface, entry )
++    {
++        if (surface->header.hwnd != hwnd) continue;
++        if (EqualRect( &surface->header.rect, rect )) ret = &surface->header;
++        else
++        {
++            list_remove( &surface->entry );
++            window_surface_release( &surface->header );
++        }
++        break;
++    }
++    if (!ret && (ret = create_remote_surface( hwnd, rect )))
++        list_add_head( &remote_surfaces, &CONTAINING_RECORD( ret, struct remote_surface, header )->entry );
++    if (ret) window_surface_add_ref( ret );
++    pthread_mutex_unlock( &remote_surfaces_lock );
++    return ret;
++}
++
++static void flush_remote_surfaces(void)
++{
++    struct remote_surface *surface;
++
++    if (list_empty( &remote_surfaces )) return;
++
++    pthread_mutex_lock( &remote_surfaces_lock );
++    LIST_FOR_EACH_ENTRY( surface, &remote_surfaces, struct remote_surface, entry )
++        window_surface_flush( &surface->header );
++    pthread_mutex_unlock( &remote_surfaces_lock );
++}
++
++/* copy the pixels another process has drawn on our window to its surface */
++LRESULT remote_surface_update( HWND hwnd, HANDLE section )
++{
++    char buffer[FIELD_OFFSET( BITMAPINFO, bmiColors[256] )];
++    BITMAPINFO *info = (BITMAPINFO *)buffer;
++    struct window_surface *surface = NULL;
++    struct remote_frame *frame = NULL;
++    LARGE_INTEGER offset = {{0}};
++    SIZE_T size = 0;
++    DWORD *dst;
++    WND *win;
++
++    if ((win = get_win_ptr( hwnd )) && win != WND_DESKTOP && win != WND_OTHER_PROCESS)
++    {
++        if ((surface = win->surface)) window_surface_add_ref( surface );
++        release_win_ptr( win );
++    }
++
++    if (surface && !NtMapViewOfSection( section, GetCurrentProcess(), (void **)&frame, 0, 0, &offset, &size,
++                                        ViewShare, 0, PAGE_READWRITE ))
++    {
++        window_surface_lock( surface );
++        if ((dst = window_surface_get_color( surface, info )) && info->bmiHeader.biBitCount == 32 &&
++            info->bmiHeader.biHeight < 0)
++        {
++            UINT width = info->bmiHeader.biWidth, height = -info->bmiHeader.biHeight;
++            RECT dirty, bounds = {0, 0, min( width, frame->width ), min( height, frame->height )};
++            int y;
++
++            remote_frame_lock( frame );
++            if (intersect_rect( &dirty, &frame->dirty, &bounds ))
++            {
++                for (y = dirty.top; y < dirty.bottom; y++)
++                    memcpy( dst + y * width + dirty.left, frame->bits + y * frame->width + dirty.left,
++                            (dirty.right - dirty.left) * 4 );
++                add_bounds_rect( &surface->bounds, &dirty );
++            }
++            SetRectEmpty( &frame->dirty );
++            frame->pending = FALSE;
++            remote_frame_unlock( frame );
++        }
++        window_surface_unlock( surface );
++        window_surface_flush( surface );
++        NtUnmapViewOfSection( GetCurrentProcess(), frame );
++    }
++
++    if (surface) window_surface_release( surface );
++    NtClose( section );
++    return 0;
++}
++
+ /***********************************************************************
+  *           update_visible_region
+  *
+@@ -874,6 +1093,7 @@ static void update_visible_region( struct dce *dce )
+             if (surface) window_surface_add_ref( surface );
+             release_win_ptr( win );
+         }
++        else if (win == WND_OTHER_PROCESS) surface = get_remote_surface( top_win, &top_rect );
+     }
+ 
+     if (!surface) SetRectEmpty( &top_rect );
+@@ -1250,6 +1470,7 @@ static INT release_dc( HWND hwnd, HDC hdc, BOOL end_paint )
+     user_unlock();
+ 
+     release_opengl_drawables( &drawables );
++    flush_remote_surfaces();
+     return ret;
+ }
+ 
+--- a/dlls/win32u/message.c
++++ b/dlls/win32u/message.c
+@@ -2195,6 +2195,8 @@ static LRESULT handle_internal_message( HWND hwnd, UINT msg, WPARAM wparam, LPAR
+     case WM_WINE_SETPARENT:
+         if (is_desktop_window( hwnd )) return 0;
+         return HandleToUlong( NtUserSetParent( hwnd, UlongToHandle(wparam) ));
++    case WM_WINE_REMOTE_SURFACE:
++        return remote_surface_update( hwnd, UlongToHandle(wparam) );
+     case WM_WINE_SETWINDOWLONG:
+         return set_window_long( hwnd, (short)LOWORD(wparam), HIWORD(wparam), lparam, FALSE );
+     case WM_WINE_SETSTYLE:
+--- a/dlls/win32u/win32u_private.h
++++ b/dlls/win32u/win32u_private.h
+@@ -50,6 +50,7 @@ extern void create_window_surface( HWND hwnd, BOOL create_layered, const RECT *s
+ extern struct window_surface *get_driver_window_surface( struct window_surface *surface, struct ratio monitor_dpi );
+ extern void erase_now( HWND hwnd, UINT rdw_flags );
+ extern void flush_window_surfaces( BOOL idle );
++extern LRESULT remote_surface_update( HWND hwnd, HANDLE section );
+ extern void move_window_bits( HWND hwnd, const struct window_rects *rects, const RECT *valid_rects );
+ extern void move_window_bits_surface( HWND hwnd, const RECT *window_rect, struct window_surface *old_surface,
+                                       const RECT *old_visible_rect, const RECT *valid_rects );
+--- a/include/ntuser.h
++++ b/include/ntuser.h
+@@ -640,6 +640,7 @@ enum wine_internal_message
+     WM_WINE_UPDATEWINDOWSTATE,
+     WM_WINE_TRACKMOUSEEVENT,
+     WM_WINE_SETPIXELFORMAT,
++    WM_WINE_REMOTE_SURFACE,
+     WM_WINE_FIRST_DRIVER_MSG = 0x80001000,  /* range of messages reserved for the USER driver */
+     WM_WINE_CLIPCURSOR = 0x80001ff0, /* internal driver notification messages */
+     WM_WINE_SETCURSOR,
