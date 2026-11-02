@@ -8,7 +8,7 @@ Status: early work. Ubisoft Connect opens, draws its window and signs in on Wine
 
 ## Ubisoft Connect
 
-`bin/tm2020 connect` installs Ubisoft Connect on first use and starts it. `bin/tm2020 stop` stops everything in this prefix.
+`bin/tm2020 connect` installs Ubisoft Connect on first use and starts it. `bin/tm2020 stop` stops everything in this prefix. `bin/tm2020 check` tells whether the current network lets you reach Ubisoft's download server, since some networks block it as a game application and Connect then only reports "Unable to start download (Code: 17004)".
 
 The prefix lives in `~/Games/TM2020/prefix` and logs in `~/Games/TM2020/logs`. The runtime is for now a copy of the MacTMNF 0.3.0 runtime at `~/Library/Application Support/Trackmania2020/runtime/0.1.0-dev`, with `wow64cpu.dll`, `win32u.so` and the 32-bit `kernelbase.dll` rebuilt from the patches, and 32-bit `d3d11.dll` and `dxgi.dll` in `lib/dxvk/x32`, built from the same d9vk source with `patches/d9vk`.
 

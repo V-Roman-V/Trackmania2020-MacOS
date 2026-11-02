@@ -17,6 +17,7 @@ export DXVK_LOG_LEVEL="${DXVK_LOG_LEVEL:-warn}"
 export DXVK_LOG_PATH="${DXVK_LOG_PATH:-none}"
 
 readonly INSTALLER_URL="https://static3.cdn.ubi.com/orbit/launcher_installer/UbisoftConnectInstaller.exe"
+readonly CDN_URL="${TM2020_CDN_URL:-http://uplaypc-s-ubisoft.cdn.ubi.com/}"
 readonly INSTALLER="${TM2020_CACHE}/UbisoftConnectInstaller.exe"
 readonly CONNECT_EXE='C:\Program Files (x86)\Ubisoft\Ubisoft Game Launcher\UbisoftConnect.exe'
 readonly CONNECT_UNIX="${WINEPREFIX}/drive_c/Program Files (x86)/Ubisoft/Ubisoft Game Launcher/UbisoftConnect.exe"
@@ -78,7 +79,31 @@ use_dxvk() {
   fi
 }
 
+# The CDN refuses a bare request either way, so the status code says nothing.
+# What matters is who answered: a firewall's page or the CDN itself.
+check_network() {
+  local response
+  response="$(curl --silent --include --max-time 10 "$CDN_URL" || true)"
+  if test -z "$response"; then
+    echo "NO ANSWER: Ubisoft's download server could not be reached from this network."
+    return 1
+  elif grep -qiE 'Application Control Violation|Policy Violation' <<<"$response"; then
+    echo "BLOCKED: a firewall on this network answered instead of Ubisoft's download server."
+    return 1
+  elif grep -qiE '^server: *akamai' <<<"$response"; then
+    echo "OPEN: Ubisoft's download server answered directly. Try Install in Connect."
+  else
+    echo "UNKNOWN: something else answered, possibly another network's filter."
+    grep -iE '^server:' <<<"$response" || true
+    sed -nE 's/.*<title>(.*)<\/title>.*/title: \1/Ip' <<<"$response" | head -1
+    return 1
+  fi
+}
+
 case "${1:-}" in
+  check)
+    check_network
+    ;;
   install)
     install_connect
     ;;
@@ -95,7 +120,7 @@ case "${1:-}" in
     "${TM2020_RUNTIME}/bin/wineserver" -k
     ;;
   *)
-    echo "usage: $(basename "$0") install|connect|stop" >&2
+    echo "usage: $(basename "$0") check|install|connect|stop" >&2
     exit 2
     ;;
 esac
