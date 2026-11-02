@@ -48,6 +48,8 @@ bin/tm2020 connect
 | --- | --- |
 | `bin/tm2020 connect` | Start Connect, and install it on first use |
 | `bin/tm2020 install` | Run Connect's installer again |
+| `bin/tm2020 diag` | Start Connect the same way, and record frame rate, CPU and GPU use while you play |
+| `bin/tm2020 report` | Show what the last `diag` session recorded |
 | `bin/tm2020 stop` | Stop everything in this prefix, including the game |
 | `bin/tm2020 check` | Tell whether this network reaches Ubisoft's download server |
 

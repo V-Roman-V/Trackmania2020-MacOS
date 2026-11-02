@@ -113,6 +113,16 @@ check_network() {
   fi
 }
 
+prepare_connect() {
+  test -f "$CONNECT_UNIX" || install_connect
+  use_software_compositing
+  # patches/wine/0003 moves WebGL in Connect's GPU process to D3D11, which
+  # DXVK answers for with the identity in config/dxvk.conf.
+  use_dxvk UplayWebCore.exe x32 syswow64
+  use_dxvk Trackmania.exe x64 system32
+  mkdir -p "$LOGS" "${TM2020_ROOT}/dxvk-cache"
+}
+
 case "${1:-}" in
   check)
     check_network
@@ -123,21 +133,25 @@ case "${1:-}" in
     ;;
   connect)
     require_runtime
-    test -f "$CONNECT_UNIX" || install_connect
-    use_software_compositing
-    # patches/wine/0003 moves WebGL in Connect's GPU process to D3D11, which
-    # DXVK answers for with the identity in config/dxvk.conf.
-    use_dxvk UplayWebCore.exe x32 syswow64
-    use_dxvk Trackmania.exe x64 system32
-    mkdir -p "$LOGS" "${TM2020_ROOT}/dxvk-cache"
+    prepare_connect
     exec "$WINE" "$CONNECT_EXE" >"${LOGS}/connect.log" 2>&1
+    ;;
+  diag)
+    require_runtime
+    prepare_connect
+    export WINEDEBUG="fixme-all,+timestamp,+pid,+fps${TM2020_TRACE:+,${TM2020_TRACE}}"
+    python3 -I "${PROJECT}/tools/session.py" monitor "${LOGS}/session.tsv" &
+    exec "$WINE" "$CONNECT_EXE" >"${LOGS}/connect.log" 2>&1
+    ;;
+  report)
+    python3 -I "${PROJECT}/tools/session.py" report "${LOGS}/session.tsv" "${LOGS}/connect.log"
     ;;
   stop)
     require_runtime
     "${TM2020_RUNTIME}/bin/wineserver" -k
     ;;
   *)
-    echo "usage: $(basename "$0") check|install|connect|stop" >&2
+    echo "usage: $(basename "$0") check|install|connect|diag|report|stop" >&2
     exit 2
     ;;
 esac

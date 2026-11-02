@@ -4,10 +4,11 @@
 
 - `bin/tm2020` installs and starts Ubisoft Connect, and gives DXVK to the programs that need it.
 - `tools/build-runtime.sh` builds the runtime.
+- `tools/session.py` records and reports a play session for `bin/tm2020 diag` and `report`.
 - `config/dxvk.conf` holds the DXVK settings for each program.
 - `patches/wine` and `patches/d9vk` are the changes to Wine and DXVK. [Runtime](runtime.md) describes each one.
 - `tests/test-cli.sh` tests `bin/tm2020` with stand-ins for curl and Wine.
-- `tests/probes` holds small Windows programs that check displays, fullscreen and shader compilation.
+- `tests/probes` holds small Windows programs that check displays, fullscreen, shader compilation.
 - `tools/standin-shaders.c` is the source of the bytecode in `patches/d9vk/0003`.
 
 Everything generated goes under `.build`, which is never committed.

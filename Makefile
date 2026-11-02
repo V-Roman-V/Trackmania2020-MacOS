@@ -14,6 +14,7 @@ check:
 	bash -n bin/tm2020
 	bash -n tools/build-runtime.sh
 	bash -n tests/test-cli.sh
+	python3 -I -m py_compile tools/session.py
 	shellcheck bin/tm2020 tools/build-runtime.sh tests/test-cli.sh
 	./tests/test-cli.sh
 
