@@ -9,7 +9,7 @@
 - `config/dxvk.conf` holds the DXVK settings for each program.
 - `patches/wine` and `patches/d9vk` are the changes to Wine and DXVK. [Runtime](runtime.md) describes each one.
 - `tests/test-cli.sh` tests `bin/tm2020` with stand-ins for curl and Wine.
-- `tests/probes` holds small Windows programs that check displays, fullscreen, shader compilation.
+- `tests/probes` holds small Windows programs that check displays, fullscreen, shader compilation and speed.
 - `tools/standin-shaders.c` is the source of the bytecode in `patches/d9vk/0003`.
 
 Everything generated goes under `.build`, which is never committed.
@@ -65,6 +65,9 @@ export WINEPREFIX="$PWD/prefix" WINEDLLOVERRIDES='dxgi,d3d11,d3dcompiler_47=n;ms
 | `dxgiprobe.exe` | Adapters, outputs and display modes as a game sees them through DXGI. Changes nothing on screen |
 | `fsprobe.exe <window x>` | Enters real fullscreen for a few seconds and logs what happens. It changes your display mode, and the watchdog restores it |
 | `msprobe.exe d3dcompiler_47.dll` | Whether the two shader forms from D9VK 0002 draw on Metal. Copy `d3dcompiler_47.dll` from the game folder next to it first, as Wine's own rejects `SV_Coverage` |
+| `callbench.exe` | What the Windows calls a game makes often cost, in ns |
+| `drawbench.exe <draws> <frames>` | What a frame costs through DXVK, MoltenVK and Metal, with a checksum of the picture |
+| `drawcheck.exe` | A checksum of a scene that uses every call Wine 0004 queues. It has to be the same with `WINEVULKAN_NO_BATCH=1` |
 
 To see what the game itself asks for, `bin/tm2020 connect` writes Wine's output to `~/Games/TM2020/logs/connect.log`. After a run, count `Failed to compile pipeline` and `Shader library compile failed` there. Both should be zero.
 

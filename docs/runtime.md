@@ -1,6 +1,6 @@
 # Runtime
 
-The runtime starts from the Wine 11.17 runtime of [TrackMania-MacOS](https://github.com/vakesz/TrackMania-MacOS), which is x86_64 and runs under Rosetta 2 with new WoW64 and MoltenVK. This project adds three Wine patches and builds DXVK for 32-bit and 64-bit programs. [Building](building.md) explains how the pieces are put together.
+The runtime starts from the Wine 11.17 runtime of [TrackMania-MacOS](https://github.com/vakesz/TrackMania-MacOS), which is x86_64 and runs under Rosetta 2 with new WoW64 and MoltenVK. This project adds four Wine patches and builds DXVK for 32-bit and 64-bit programs. [Building](building.md) explains how the pieces are put together.
 
 ## Patches
 
@@ -12,10 +12,12 @@ The runtime starts from the Wine 11.17 runtime of [TrackMania-MacOS](https://git
 | D9VK 0001 | Copy the whole adapter name, which was cut in half | Same test program; sign-in passes |
 | D9VK 0002 | Avoid two shader forms that Metal rejects: `SV_Coverage` passed to a function, and a mip query on a multisampled texture | `tests/probes/msprobe.c` before and after; 33 failed pipelines in play before, 0 after |
 | D9VK 0003 | Replace two geometry shaders with vertex shaders that pick the render target layer | Reading back every layer with the game's own shaders before and after; shadows correct in play |
+| Wine 0004 | Queue Vulkan calls that return nothing and send them across together | `tests/probes/drawbench.c` before and after; `tests/probes/drawcheck.c` gives the same picture and compute result, and dropping any queued call changes them |
+| D9VK 0004 | Fetch descriptor sets several at a time | Same two probes |
 
 Sign-in started to pass after D9VK 0001 and a fresh browser profile for Connect were tried together, so it isn't known which of the two mattered. If sign-in breaks after a Connect update, look at both first.
 
-The 32-bit DXVK only has D9VK 0001. Only Connect uses it, and that is the build that passed sign-in. The 64-bit DXVK has all three.
+The 32-bit DXVK only has D9VK 0001. Only Connect uses it, and that is the build that passed sign-in. The 64-bit DXVK has all four.
 
 The stand-in shaders are stored as bytecode in `patches/d9vk/0003`. Their HLSL source is in `tools/standin-shaders.c`.
 
@@ -26,6 +28,14 @@ Connect's interface is Chromium, and its GPU process can't reach `upc.exe`'s win
 WebGL draws offscreen, so it doesn't need the window. It runs on DXVK in Connect's GPU process, because Ubisoft's sign-in reads the WebGL renderer. See [the README](../README.md#sign-in-and-the-reported-gpu).
 
 The game is a normal 64-bit D3D11 program. It gets DXVK from `bin/tm2020`, which sets DLL overrides for `UplayWebCore.exe` and `Trackmania.exe` only. Everything else in the prefix keeps Wine's own D3D, which stops at feature level 9_3 on this GPU.
+
+## What a switch into Wine costs
+
+DXVK is Windows code and MoltenVK is Unix code, so every Vulkan call between them crosses from one side to the other. On macOS each direction has to change GSBASE, because Windows code finds its thread data through `%gs` and macOS does too, in a different place. That takes a system call, `_thread_set_tsd_base`, and 175 ns under Rosetta. A whole crossing takes about 390 ns, so this one step is about 90% of it. `wrgsbase` would be the fast way, and it faults under Rosetta.
+
+A draw took four such calls: `vkAllocateDescriptorSets`, `vkUpdateDescriptorSetWithTemplate`, `vkCmdBindDescriptorSets` and `vkCmdDraw`. That was about 1.4 µs of the 2 µs that DXVK's render thread spent on it. Wine 0004 takes care of the three that return nothing, and D9VK 0004 of the one that does.
+
+Calls that go through wineserver cost more. In `tests/probes/callbench.c`, setting or waiting on an event takes 7 to 9 µs, and waking another thread with an event takes 22 µs. Locks stay in the process and take 4 to 13 ns.
 
 ## Connect during play
 

@@ -22,4 +22,4 @@ probes: $(PROBES)
 
 .build/probes/%.exe: tests/probes/%.c
 	@mkdir -p .build/probes
-	x86_64-w64-mingw32-gcc -O2 -o $@ $< -ld3d11 -ldxgi -ldxguid -luuid
+	x86_64-w64-mingw32-gcc -O2 -o $@ $< -ld3d11 -ldxgi -ldxguid -luuid -luser32 -lsynchronization

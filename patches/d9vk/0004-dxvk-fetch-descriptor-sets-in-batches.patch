@@ -1,0 +1,120 @@
+Subject: dxvk: Fetch descriptor sets in batches.
+
+DXVK allocates a descriptor set for almost every draw. Under Wine each Vulkan call
+is a switch to the Unix side, which on macOS costs two system calls for GSBASE, and
+this call has to return a result, so it can't wait in a queue either. Sets of one
+layout are all alike, so take up to 32 at a time and hand them out one by one.
+
+The number grows from 1 for each layout, so that a layout used once doesn't take
+space in the pool. If the pool can't give that many, it falls back to one, and then
+to the existing path that moves on to a new pool.
+
+diff --git a/src/dxvk/dxvk_descriptor.cpp b/src/dxvk/dxvk_descriptor.cpp
+index cdd2ae6..4761529 100644
+--- a/src/dxvk/dxvk_descriptor.cpp
++++ b/src/dxvk/dxvk_descriptor.cpp
+@@ -1,3 +1,5 @@
++#include <algorithm>
++
+ #include "dxvk_descriptor.h"
+ #include "dxvk_device.h"
+ 
+@@ -38,26 +40,56 @@ namespace dxvk {
+   
+   
+   VkDescriptorSet DxvkDescriptorPool::alloc(VkDescriptorSetLayout layout) {
+-    VkDescriptorSetAllocateInfo info;
+-    info.sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+-    info.pNext              = nullptr;
+-    info.descriptorPool     = m_pool;
+-    info.descriptorSetCount = 1;
+-    info.pSetLayouts        = &layout;
+-    
+-    VkDescriptorSet set = VK_NULL_HANDLE;
+-    if (m_vkd->vkAllocateDescriptorSets(m_vkd->device(), &info, &set) != VK_SUCCESS)
++    SetCache& cache = m_setCaches[layout];
++
++    if (cache.sets.empty() && !refill(cache, layout))
+       return VK_NULL_HANDLE;
++
++    VkDescriptorSet set = cache.sets.back();
++    cache.sets.pop_back();
+     return set;
+   }
+   
+   
+   void DxvkDescriptorPool::reset() {
++    m_setCaches.clear();
++
+     m_vkd->vkResetDescriptorPool(
+       m_vkd->device(), m_pool, 0);
+   }
+ 
+ 
++  bool DxvkDescriptorPool::refill(SetCache& cache, VkDescriptorSetLayout layout) {
++    std::array<VkDescriptorSetLayout, MaxSetsPerRefill> layouts;
++    layouts.fill(layout);
++
++    VkDescriptorSetAllocateInfo info;
++    info.sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
++    info.pNext              = nullptr;
++    info.descriptorPool     = m_pool;
++    info.descriptorSetCount = cache.refillSize;
++    info.pSetLayouts        = layouts.data();
++
++    cache.sets.resize(info.descriptorSetCount);
++    VkResult status = m_vkd->vkAllocateDescriptorSets(m_vkd->device(), &info, cache.sets.data());
++
++    // The pool may only have room for fewer sets than we asked for.
++    if (status != VK_SUCCESS && info.descriptorSetCount > 1) {
++      info.descriptorSetCount = 1;
++      cache.sets.resize(1);
++      status = m_vkd->vkAllocateDescriptorSets(m_vkd->device(), &info, cache.sets.data());
++    }
++
++    if (status != VK_SUCCESS) {
++      cache.sets.clear();
++      return false;
++    }
++
++    cache.refillSize = std::min(cache.refillSize * 2, MaxSetsPerRefill);
++    return true;
++  }
++
++
+ 
+ 
+   DxvkDescriptorPoolTracker::DxvkDescriptorPoolTracker(DxvkDevice* device)
+diff --git a/src/dxvk/dxvk_descriptor.h b/src/dxvk/dxvk_descriptor.h
+index 243e6b0..7981ca4 100644
+--- a/src/dxvk/dxvk_descriptor.h
++++ b/src/dxvk/dxvk_descriptor.h
+@@ -1,5 +1,7 @@
+ #pragma once
+ 
++#include <array>
++#include <unordered_map>
+ #include <vector>
+ 
+ #include "dxvk_include.h"
+@@ -54,8 +56,20 @@ namespace dxvk {
+     
+   private:
+     
++    // Under Wine every Vulkan call costs a slow switch to the Unix side, and on Rosetta that
++    // adds up over a frame's draws. Sets are all alike, so fetch several in one call.
++    static constexpr uint32_t MaxSetsPerRefill = 32;
++
++    struct SetCache {
++      std::vector<VkDescriptorSet> sets;
++      uint32_t refillSize = 1;
++    };
++
+     Rc<vk::DeviceFn> m_vkd;
+     VkDescriptorPool m_pool;
++    std::unordered_map<VkDescriptorSetLayout, SetCache> m_setCaches;
++
++    bool refill(SetCache& cache, VkDescriptorSetLayout layout);
+     
+   };
+ 
