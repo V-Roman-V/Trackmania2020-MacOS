@@ -2,12 +2,13 @@ Subject: d3d11: Stand in for two geometry shaders with vertex shaders.
 
 Metal has no geometry stage, and MoltenVK drops it without an error. Trackmania's
 light probe pass then draws nothing, because its vertex shader has no outputs, and
-HBAO+ writes all its slices to layer 0. Shaded areas are almost black with shadows
-on, which may come from this.
+HBAO+ writes all its slices to layer 0. With shadows on High, shaded areas came out
+almost black, and they are correct with this patch.
 
 Both geometry shaders only make a full-screen triangle and pick its render target
 layer, which a vertex shader can do with VK_EXT_shader_viewport_index_layer. Bind
-one in their place, reading the constants the game gives the geometry stage.
+one in their place, reading the constants the game gives the geometry stage. The
+bytecode is built from tools/standin-shaders.c.
 
 --- a/src/d3d11/d3d11_context.cpp
 +++ b/src/d3d11/d3d11_context.cpp

@@ -1,0 +1,15 @@
+name: Check scripts
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4, pinned
+      - name: Install validation tools
+        run: brew install shellcheck
+      - name: Validate
+        run: make check

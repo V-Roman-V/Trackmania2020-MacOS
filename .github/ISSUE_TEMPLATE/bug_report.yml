@@ -1,0 +1,58 @@
+name: Bug report
+description: Something is broken when building, signing in or playing.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For a security problem, use the security policy instead of a public issue.
+        Check logs before you paste them. Connect's logs can contain signed download URLs and account details.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did and what went wrong. Paste exact error text.
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: macOS version and Mac model
+      placeholder: e.g. macOS 27.0.1, M5 Pro
+    validations:
+      required: true
+  - type: input
+    id: commit
+    attributes:
+      label: Commit you built from
+      description: The output of `git rev-parse --short HEAD`.
+    validations:
+      required: true
+  - type: dropdown
+    id: stage
+    attributes:
+      label: Where it failed
+      options:
+        - make build
+        - Installing or opening Ubisoft Connect
+        - Signing in
+        - Downloading the game
+        - Starting the game
+        - Playing
+    validations:
+      required: true
+  - type: input
+    id: displays
+    attributes:
+      label: Displays connected
+      placeholder: e.g. laptop panel only, or laptop panel and one external monitor
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: From ~/Games/TM2020/logs/connect.log. Trim long files.
+      render: text
+    validations:
+      required: false

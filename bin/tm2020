@@ -2,16 +2,21 @@
 # Run Ubisoft Connect for Trackmania 2020 in its own Wine prefix.
 set -euo pipefail
 
+PROJECT="$(cd "$(dirname "$0")/.." && pwd)"
+readonly PROJECT
+
 : "${TM2020_ROOT:=${HOME}/Games/TM2020}"
 : "${TM2020_SUPPORT:=${HOME}/Library/Application Support/Trackmania2020}"
 : "${TM2020_CACHE:=${HOME}/Library/Caches/Trackmania2020}"
-: "${TM2020_RUNTIME:=${TM2020_SUPPORT}/runtime/0.1.0-dev}"
+: "${TM2020_RUNTIME:=${TM2020_SUPPORT}/runtime/$(cat "${PROJECT}/VERSION")}"
 
-readonly PROJECT="$(cd "$(dirname "$0")/.." && pwd)"
 readonly DXVK_CONF="${PROJECT}/config/dxvk.conf"
 
 export WINEPREFIX="${TM2020_ROOT}/prefix"
 export WINEDEBUG="${WINEDEBUG:-fixme-all}"
+# Nothing here uses .NET or Gecko. Wine would offer to download them each time a new
+# runtime updates the prefix.
+export WINEDLLOVERRIDES="${WINEDLLOVERRIDES:-mscoree,mshtml=d}"
 export DXVK_CONFIG_FILE="${DXVK_CONFIG_FILE:-Z:${DXVK_CONF//\//\\}}"
 export DXVK_LOG_LEVEL="${DXVK_LOG_LEVEL:-warn}"
 export DXVK_LOG_PATH="${DXVK_LOG_PATH:-none}"
@@ -23,10 +28,17 @@ readonly INSTALLER="${TM2020_CACHE}/UbisoftConnectInstaller.exe"
 readonly CONNECT_EXE='C:\Program Files (x86)\Ubisoft\Ubisoft Game Launcher\UbisoftConnect.exe'
 readonly CONNECT_UNIX="${WINEPREFIX}/drive_c/Program Files (x86)/Ubisoft/Ubisoft Game Launcher/UbisoftConnect.exe"
 readonly LOGS="${TM2020_ROOT}/logs"
-readonly LOCAL_STATE="${WINEPREFIX}/drive_c/users/${USER}/AppData/Local/Ubisoft Game Launcher/cache/http2/Local State"
+LOCAL_STATE="${WINEPREFIX}/drive_c/users/$(id -un)/AppData/Local/Ubisoft Game Launcher/cache/http2/Local State"
+readonly LOCAL_STATE
 readonly WINE="${TM2020_RUNTIME}/bin/wine"
 readonly DXVK_DLLS="${TM2020_RUNTIME}/lib/dxvk"
 readonly WINDOWS_DIR="${WINEPREFIX}/drive_c/windows"
+
+require_runtime() {
+  test -x "$WINE" && return
+  echo "No runtime in ${TM2020_RUNTIME}. Build it first with: make build" >&2
+  exit 1
+}
 
 install_connect() {
   mkdir -p "$TM2020_CACHE" "$LOGS"
@@ -35,9 +47,9 @@ install_connect() {
     mv "${INSTALLER}.partial" "$INSTALLER"
   fi
   if ! test -d "$WINEPREFIX"; then
-    WINEDLLOVERRIDES="mscoree,mshtml=d" "$WINE" wineboot -i
+    "$WINE" wineboot -i
     "${TM2020_RUNTIME}/bin/wineserver" -w
-    # The Porting Kit setup that Connect started on used wined3d's OpenGL backend.
+    # Connect's window needs wined3d's OpenGL backend.
     "$WINE" reg add 'HKCU\Software\Wine\Direct3D' /v renderer /t REG_SZ /d gl /f
     # Crashes go to the log as backtraces, not to a dialog.
     "$WINE" reg add 'HKCU\Software\Wine\WineDbg' /v ShowCrashDialog /t REG_DWORD /d 0 /f
@@ -106,9 +118,11 @@ case "${1:-}" in
     check_network
     ;;
   install)
+    require_runtime
     install_connect
     ;;
   connect)
+    require_runtime
     test -f "$CONNECT_UNIX" || install_connect
     use_software_compositing
     # patches/wine/0003 moves WebGL in Connect's GPU process to D3D11, which
@@ -119,6 +133,7 @@ case "${1:-}" in
     exec "$WINE" "$CONNECT_EXE" >"${LOGS}/connect.log" 2>&1
     ;;
   stop)
+    require_runtime
     "${TM2020_RUNTIME}/bin/wineserver" -k
     ;;
   *)
