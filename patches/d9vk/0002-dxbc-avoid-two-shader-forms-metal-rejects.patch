@@ -1,0 +1,99 @@
+Subject: dxbc: Avoid two shader forms that Metal rejects.
+
+SPIRV-Cross makes the SampleMask input a single value in the entry point of the
+MSL it writes, but an array in functions it is passed to, and then the call does
+not compile. Read it in main and keep it in a private variable for ps_main.
+
+Metal has no mip level query on multisampled textures, and they only have one
+level, so report that as for UAVs.
+
+Either one loses the whole pipeline, which left Trackmania without its ground.
+
+--- a/src/dxbc/dxbc_compiler.cpp
++++ b/src/dxbc/dxbc_compiler.cpp
+@@ -532,6 +532,9 @@ namespace dxvk {
+           spv::StorageClassInput },
+           spv::BuiltInSampleMask,
+           "vCoverage");
++        m_ps.sampleMaskIn = emitNewVariable({
++          { DxbcScalarType::Uint32, 1, 0 },
++          spv::StorageClassPrivate });
+       } break;
+       
+       case DxbcOperandType::OutputCoverageMask: {
+@@ -4976,21 +4979,10 @@ namespace dxvk {
+           { DxbcScalarType::Uint32, 1 },
+           m_cs.builtinLocalInvocationIndex };
+       
+-      case DxbcOperandType::InputCoverageMask: {
+-        const std::array<uint32_t, 1> indices
+-          = {{ m_module.constu32(0) }};
+-        
+-        DxbcRegisterPointer result;
+-        result.type.ctype  = DxbcScalarType::Uint32;
+-        result.type.ccount = 1;
+-        result.id = m_module.opAccessChain(
+-          m_module.defPointerType(
+-            getVectorTypeId(result.type),
+-            spv::StorageClassInput),
+-          m_ps.builtinSampleMaskIn,
+-          indices.size(), indices.data());
+-        return result;
+-      }
++      case DxbcOperandType::InputCoverageMask:
++        return DxbcRegisterPointer {
++          { DxbcScalarType::Uint32, 1 },
++          m_ps.sampleMaskIn };
+         
+       case DxbcOperandType::OutputCoverageMask: {
+         const std::array<uint32_t, 1> indices
+@@ -5349,12 +5341,12 @@ namespace dxvk {
+     result.type.ctype  = DxbcScalarType::Uint32;
+     result.type.ccount = 1;
+     
+-    if (info.image.sampled == 1) {
++    if (info.image.sampled == 1 && info.image.ms == 0) {
+       result.id = m_module.opImageQueryLevels(
+         getVectorTypeId(result.type),
+         m_module.opLoad(info.typeId, info.varId));
+     } else {
+-      // Report one LOD in case of UAVs
++      // Report one LOD in case of UAVs and multisampled images
+       result.id = m_module.constu32(1);
+     }
+ 
+@@ -7017,11 +7009,22 @@ namespace dxvk {
+     this->emitInputSetup();
+     this->emitClipCullLoad(DxbcSystemValue::ClipDistance, m_clipDistances);
+     this->emitClipCullLoad(DxbcSystemValue::CullDistance, m_cullDistances);
+-    
++
++    // SPIRV-Cross makes this builtin a single value in Metal's entry point but
++    // an array in the functions it is passed to, so ps_main must not use it.
++    if (m_ps.builtinSampleMaskIn != 0) {
++      const uint32_t typeId = getScalarTypeId(DxbcScalarType::Uint32);
++      const uint32_t index  = m_module.constu32(0);
++      const uint32_t ptrId  = m_module.opAccessChain(
++        m_module.defPointerType(typeId, spv::StorageClassInput),
++        m_ps.builtinSampleMaskIn, 1, &index);
++      m_module.opStore(m_ps.sampleMaskIn, m_module.opLoad(typeId, ptrId));
++    }
++
+     m_module.opFunctionCall(
+       m_module.defVoidType(),
+       m_ps.functionId, 0, nullptr);
+-    
++
+     if (m_ps.killState != 0) {
+       DxbcConditional cond;
+       cond.labelIf  = m_module.allocateId();
+--- a/src/dxbc/dxbc_compiler.h
++++ b/src/dxbc/dxbc_compiler.h
+@@ -185,6 +185,7 @@ namespace dxvk {
+     uint32_t killState            = 0;
+ 
+     uint32_t specRsSampleCount    = 0;
++    uint32_t sampleMaskIn         = 0;
+   };
+   
+   
