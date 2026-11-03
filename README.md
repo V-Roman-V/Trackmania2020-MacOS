@@ -2,11 +2,24 @@
 
 Play Trackmania (2020) on a Mac with an M-series chip. This free, open-source project runs Ubisoft Connect and the game through Wine, with fixes for Apple's graphics and some speed-ups of its own. Sign-in, online races and [Openplanet](https://openplanet.dev) with its plugins all work.
 
-| Ubisoft Connect | Main menu |
-| --- | --- |
-| ![Ubisoft Connect's library with Trackmania installed](docs/images/ubisoft-connect.jpg) | ![Trackmania's main menu](docs/images/main-menu.jpg) |
-| **In a race, with Openplanet** | **On an online server** |
-| ![A race on a campaign map, with Openplanet's menu bar and a frame rate counter](docs/images/in-game.jpg) | ![An online server, with Openplanet plugins](docs/images/online-server.jpg) |
+<table>
+  <tr>
+    <th width="50%">Ubisoft Connect</th>
+    <th width="50%">Main menu</th>
+  </tr>
+  <tr>
+    <td><img src="docs/images/ubisoft-connect.jpg" width="100%" alt="Ubisoft Connect's library with Trackmania installed"></td>
+    <td><img src="docs/images/main-menu.jpg" width="100%" alt="Trackmania's main menu"></td>
+  </tr>
+  <tr>
+    <th>In a race, with Openplanet</th>
+    <th>On an online server</th>
+  </tr>
+  <tr>
+    <td><img src="docs/images/in-game.jpg" width="100%" alt="A race on a campaign map, with Openplanet's menu bar and a frame rate counter"></td>
+    <td><img src="docs/images/online-server.jpg" width="100%" alt="An online server, with Openplanet plugins"></td>
+  </tr>
+</table>
 
 ## What works
 
