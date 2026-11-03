@@ -22,6 +22,8 @@ readonly LOG="${BUILD}/build.log"
 readonly PINS="${PROJECT}/config/sources.json"
 # Keeps the checkout path out of compiled code. check_paths makes sure of that.
 readonly PREFIX_MAP="-ffile-prefix-map=${PROJECT}=/tm2020"
+# Everything in the repository that goes into the runtime. tools/package.sh reads this too.
+INPUTS=(VERSION LICENSE config/sources.json licenses patches tools/build-runtime.sh tools/connect-idle.c)
 FORMULAS=(mingw-w64 meson ninja glslang bison flex pkgconf)
 LIBRARIES=(freetype gmp nettle libtasn1 libunistring gnutls)
 LIBRARY_ENV=("CC=/usr/bin/clang -arch x86_64" "CXX=/usr/bin/clang++ -arch x86_64"
@@ -272,9 +274,22 @@ write_licenses() {
   done
 }
 
+# Prints the commit the build inputs come from, so make package can tell whether the
+# runtime still matches them.
+built_from() {
+  local commit
+  commit="$(git -C "$PROJECT" rev-parse HEAD 2>/dev/null)" || { echo 'a copy without git history'; return; }
+  if test -n "$(git -C "$PROJECT" status --porcelain -- "${INPUTS[@]}")"; then
+    echo "${commit} with local changes"
+  else
+    echo "$commit"
+  fi
+}
+
 write_build_info() {
   {
     echo "Trackmania2020-MacOS runtime $(cat "${PROJECT}/VERSION")"
+    echo "Commit $(built_from)"
     echo "macOS $(sw_vers -productVersion)"
     xcodebuild -version | /usr/bin/sed -n 1p
     x86_64-w64-mingw32-gcc --version | /usr/bin/sed -n 1p
