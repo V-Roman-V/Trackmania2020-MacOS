@@ -1,6 +1,6 @@
 # Trackmania 2020 for Apple Silicon Macs
 
-Play Trackmania (2020) on a Mac with an M-series chip. This free, open-source project runs Ubisoft Connect and the game through Wine, with fixes for Apple's graphics and some speed-ups of its own. An install script sets up the runtime and Ubisoft Connect, and adds a Trackmania 2020 app.
+Play Trackmania (2020) on a Mac with an M-series chip. This free, open-source project runs Ubisoft Connect and the game through Wine, with fixes for Apple's graphics and some speed-ups of its own. Sign-in, online races and [Openplanet](https://openplanet.dev) with its plugins all work.
 
 | In a race | Main menu |
 | --- | --- |
@@ -16,7 +16,7 @@ Play Trackmania (2020) on a Mac with an M-series chip. This free, open-source pr
 | The game | Draws correctly on Apple's Metal |
 | Frame rate | Median 123 FPS in fullscreen at 1800×1169, see [Frame rate](#frame-rate) |
 | Online races | Work, with free Starter access and with Club access |
-| Openplanet | Works, with plugins from its Plugin Manager |
+| Openplanet | Works, with plugins from its Plugin Manager. One command installs it |
 | Fullscreen | Works on the Mac's own display. While an external display is connected, the game stays in a window |
 
 So far this has been tested on one Mac, a MacBook Pro with M5 Pro and macOS 27. It should work on any Apple Silicon Mac, probably with a lower frame rate on smaller chips. If you try it on another Mac, please [tell me how it went](https://github.com/V-Roman-V/Trackmania2020-MacOS/issues), even if everything works.
@@ -28,6 +28,7 @@ A standard Wine setup doesn't get far with Trackmania on a Mac. These are the pr
 - **Signing in.** Ubisoft's sign-in page answers "Access is temporarily restricted" to Connect on Wine. Here it lets you in. Please read [About the sign-in](#about-the-sign-in) to see how.
 - **Ubisoft Connect itself.** Its window stayed blank, and its web pages crashed under Rosetta. Two Wine patches and one of its settings fix both.
 - **Correct graphics.** Metal rejected 33 of the game's graphics pipelines, so levels had no ground. Metal also has no geometry shaders, which two of the game's lighting passes need. Patches to DXVK fix both, and every pixel, vertex and compute shader in the game's shader cache, 4,847 of them, now compiles on Metal.
+- **Openplanet.** Openplanet loads under Wine and Rosetta, with plugins from its Plugin Manager. `tm2020 openplanet` installs it into the game's folder, which it finds by itself. See [Openplanet](#openplanet).
 - **Speed.** Connect kept redrawing its window behind the game, which cost more than a whole CPU core, and now it rests while you play. DXVK's calls into Wine now go across in batches. On the same map, that raised the median from 119 to 124 FPS, and the frame rate held 90% of the time from 107 to 114 FPS. Two smaller changes take another 0.4 ms of work per frame off the game's busiest thread.
 - **No paid software.** You don't need CrossOver or any other paid tool. Everything is built from public source code, and you can build it yourself.
 
@@ -76,6 +77,7 @@ The runtime comes from this project's [GitHub release](https://github.com/V-Roma
 1. Open the Trackmania 2020 app, which starts Ubisoft Connect.
 2. Read [About the sign-in](#about-the-sign-in), then sign in with your Ubisoft account.
 3. Install Trackmania in Connect and press Play.
+4. Optionally, add Openplanet: download its installer and run one command, see [Openplanet](#openplanet).
 
 The app takes the game's icon once the game is installed.
 
