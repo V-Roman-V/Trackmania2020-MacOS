@@ -27,7 +27,7 @@ Everything generated goes under `.build`, which is never committed.
 3. Builds freetype, gmp, nettle, libtasn1, libunistring, gnutls and MoltenVK for x86_64, then Wine for 32-bit and 64-bit Windows programs.
 4. Puts the runtime together. Every macOS binary is relinked to the libraries next to it, stripped and signed, and the license files of every source are copied into `licenses`.
 5. Builds `d3d11.dll` and `dxgi.dll` from the D9VK source for 32-bit and 64-bit programs, with the patches for each, and `connect-idle.exe`.
-6. Checks that no file contains the checkout path, so nobody's home folder ends up in a runtime, and moves the result to `~/Library/Application Support/Trackmania2020/runtime/<VERSION>`.
+6. Checks that no file contains the checkout path, so nobody's home folder ends up in a runtime. Checks that no binary calls a function that macOS 14 doesn't have without checking the macOS version first: the SDK is newer than that, and such a call crashes on older macOS. Then it moves the result to `~/Library/Application Support/Trackmania2020/runtime/<VERSION>`.
 
 `build-info.txt` in the runtime records the version, the commit of the build inputs, the tools and the SHA-256 of every patch. The inputs are the files listed in `INPUTS` at the top of `tools/build-runtime.sh`.
 

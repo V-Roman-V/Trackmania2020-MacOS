@@ -192,6 +192,9 @@ build_wine() {
     ac_cv_lib_soname_freetype=@rpath/libfreetype.6.dylib
     ac_cv_lib_soname_gnutls=@rpath/libgnutls.30.dylib
     ac_cv_lib_soname_MoltenVK=@rpath/libMoltenVK.dylib
+    # The SDK has pipe2 from macOS 27 on, and Wine calls it without a version check, so
+    # every Wine process crashed on older macOS. Wine falls back to pipe and fcntl.
+    ac_cv_func_pipe2=no
     "LDFLAGS=-L${DEPS}/lib -Wl,-rpath,${DEPS}/lib -Wl,-headerpad_max_install_names")
   test -f "${headers}/vulkan/vulkan.h" || fail "MoltenVK did not provide the Vulkan headers in ${headers}."
   # Patches are left out on purpose: a changed patch only rebuilds the files it touches.
@@ -334,6 +337,29 @@ build_dxvk() {
   run "dxvk ${bits}: ninja" ninja -C "$build" -j "$TM2020_JOBS" src/dxgi/dxgi.dll src/d3d11/d3d11.dll
 }
 
+# The SDK is newer than MACOSX_DEPLOYMENT_TARGET, so the code can reach functions that older
+# macOS doesn't have. They are weak imports, which are null on those versions. These are the
+# ones called only after a version check; any other one crashes there.
+GUARDED_IMPORTS=(_os_sync_wait_on_address _os_sync_wait_on_address_with_timeout
+  _os_sync_wake_by_address_any __availability_version_check)
+
+check_weak_imports() {
+  local file symbol unguarded=()
+  while IFS= read -r -d '' file; do
+    case "$(file -b "$file")" in
+      *Mach-O*) ;;
+      *) continue ;;
+    esac
+    while IFS= read -r symbol; do
+      [[ " ${GUARDED_IMPORTS[*]} " == *" ${symbol} "* ]] || unguarded+=("${file#"$1"/}: ${symbol}")
+    done < <(nm -m "$file" 2>/dev/null | /usr/bin/sed -n -E 's/.* weak external ([^ ]+) \(from libSystem\).*/\1/p')
+  done < <(find "$1" -type f -print0)
+  if test "${#unguarded[@]}" -gt 0; then
+    printf '%s\n' "${unguarded[@]}" >&2
+    fail "These call functions that macOS ${MACOSX_DEPLOYMENT_TARGET} doesn't have. Turn them off in Wine's configure, or list them in GUARDED_IMPORTS if every call checks the version."
+  fi
+}
+
 # Fails if a file in the folder contains the checkout path, so nobody's home folder ships.
 check_paths() {
   local status=0 found="${BUILD}/leaked-paths.txt"
@@ -356,6 +382,7 @@ install_runtime() {
   done
   mkdir -p "${partial}/libexec"
   x86_64-w64-mingw32-gcc -O2 -mwindows -o "${partial}/libexec/connect-idle.exe" "${PROJECT}/tools/connect-idle.c"
+  check_weak_imports "$partial"
   check_paths "$partial"
   mv "$partial" "$TM2020_RUNTIME"
 }
