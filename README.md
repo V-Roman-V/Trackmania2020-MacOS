@@ -15,7 +15,7 @@ This is early work, and it has only been tested on one Mac, an M5 Pro with macOS
 | Starter and Club access | Both work. Your Ubisoft account decides which one you get |
 | Fullscreen | Works with one display, but stays windowed while a second display is connected |
 | Openplanet | Works, with plugins from its Plugin Manager |
-| Online races | Not confirmed yet |
+| Online races | Work |
 
 ## Sign-in and the reported GPU
 
