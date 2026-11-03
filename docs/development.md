@@ -1,12 +1,14 @@
-# Trackmania 2020 for Apple Silicon
+# Trackmania 2020 for Apple Silicon: development notes
 
-Run Trackmania (2020) and Ubisoft Connect on an Apple Silicon Mac with a patched Wine runtime and DXVK. The project itself is free, and you don't need a paid compatibility layer.
+This is the technical side of the project: what works and how it was checked, how to build the runtime yourself, every command, the performance work and the measurements. To install and play, the [README](../README.md) is enough.
+
+The project runs Trackmania (2020) and Ubisoft Connect on an Apple Silicon Mac with a patched Wine runtime and DXVK. The project itself is free, and you don't need a paid compatibility layer.
 
 It doesn't change what you can play. Trackmania has two kinds of access: Starter, which is free and has limited content, and Club, a yearly subscription with everything. Your Ubisoft account decides which one you have, and nothing in this project depends on it. Both have been tested, and they work the same way through Connect.
 
 This is an independent community project, not affiliated with Nadeo or Ubisoft. The game and Connect are not redistributed here. Connect downloads from Ubisoft, and you sign in with your own Ubisoft account.
 
-This is early work, and it has only been tested on one Mac, an M5 Pro with macOS 27.0.1. There is no ready-made download yet, so you build the runtime yourself.
+It has only been tested on one Mac so far, an M5 Pro with macOS 27.0.1. Players install a prebuilt runtime from the GitHub release with `install.sh`. This page builds the runtime yourself instead.
 
 | Part | Status |
 | --- | --- |
@@ -23,7 +25,7 @@ Please read this before you sign in. Ubisoft's sign-in is guarded by DataDome, w
 
 This project uses the same workaround as MetalSharp. WebGL in Connect's GPU process runs on the real GPU through DXVK and MoltenVK, while compositing stays in software, and `config/dxvk.conf` makes it report an AMD Radeon RX 6800 XT. That GPU is not the real one: this gets past a security check by reporting false hardware, so using it is your own decision and at your own risk, including any risk to your Ubisoft account. Only `UplayWebCore.exe` is affected, and the game keeps its own adapter.
 
-## Requirements
+## Requirements for building
 
 - An Apple Silicon Mac with Rosetta 2. To add it: `softwareupdate --install-rosetta --agree-to-license`
 - The full Xcode app and [Homebrew](https://brew.sh). The build installs the other tools it needs with `brew install`.
@@ -38,23 +40,30 @@ sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
 git clone https://github.com/V-Roman-V/Trackmania2020-MacOS.git
 cd Trackmania2020-MacOS
 make build
-bin/tm2020 connect
+make install
 ```
 
-`make build` downloads pinned sources and compiles Wine, MoltenVK and DXVK. That took about 12 minutes on an M5 Pro with the Homebrew tools already installed. The steps are in [docs/building.md](docs/building.md).
+`make build` downloads pinned sources and compiles Wine, MoltenVK and DXVK. That took about 12 minutes on an M5 Pro with the Homebrew tools already installed. The steps are in [building.md](building.md).
 
-`bin/tm2020 connect` installs Ubisoft Connect on first use and starts it. Sign in, install Trackmania from Connect, and press Play there.
+`make install` runs `install.sh`, which finds the runtime you just built and doesn't download one. It installs Ubisoft Connect, copies the launcher to `~/Library/Application Support/Trackmania2020/launcher` and makes the Trackmania 2020 app, which runs that copy. To work on the scripts, run `bin/tm2020 connect` from the checkout instead. Sign in, install Trackmania from Connect, and press Play there.
 
 ## Everyday commands
 
 | Command | Action |
 | --- | --- |
-| `bin/tm2020 connect` | Start Connect, and install it on first use |
-| `bin/tm2020 install` | Run Connect's installer again |
+| `bin/tm2020 start` | Start Connect in the background and return, which is what the app does |
+| `bin/tm2020 connect` | Start Connect, install it on first use, and wait until it closes |
+| `bin/tm2020 stop` | Stop everything in this prefix, including the game |
+| `bin/tm2020 openplanet <installer>` | Install Openplanet into the game's folder, while the game is closed |
+| `bin/tm2020 check-download` | Tell whether this network lets Connect download from Ubisoft's server |
 | `bin/tm2020 diag` | Start Connect the same way, and record frame rate, CPU and GPU use while you play |
 | `bin/tm2020 report` | Show what the last `diag` session recorded |
-| `bin/tm2020 stop` | Stop everything in this prefix, including the game |
-| `bin/tm2020 check-download` | Tell whether this network lets Connect download from Ubisoft's server |
+| `bin/tm2020 prepare` | Install Connect if it is missing and set up the prefix, without starting anything |
+| `bin/tm2020 install` | Run Connect's installer again |
+| `bin/tm2020 app` | Make the Trackmania 2020 app, which runs this copy's `start` |
+| `bin/tm2020 uninstall` | Remove Connect, the game, the runtimes, the launcher and the app, after a typed yes |
+
+`diag` and `report` need `python3`, which comes with Apple's command line tools. Nothing else does.
 
 To see the frame rate in the game, start Connect with `DXVK_HUD=fps,frametimes bin/tm2020 connect`.
 
@@ -72,7 +81,7 @@ The first two changes are confirmed in play. Connect's median CPU use was 0% ove
 
 ## Display settings
 
-Disconnect any external display before you start the game. With one connected, the game stays windowed and picking a resolution in its settings does nothing. The reason isn't known yet, and [docs/runtime.md](docs/runtime.md#known-limits) has what was found so far. Without one, real fullscreen worked at 1800×1169 on a 14-inch MacBook Pro.
+Disconnect any external display before you start the game. With one connected, the game stays windowed and picking a resolution in its settings does nothing. The reason isn't known yet, and [runtime.md](runtime.md#known-limits) has what was found so far. Without one, real fullscreen worked at 1800×1169 on a 14-inch MacBook Pro.
 
 The game keeps its settings in `~/Documents/Trackmania/Config/Default.json`. It writes that file back when it closes, so only edit it while the game is closed. The `Display` block has these settings:
 
@@ -86,16 +95,13 @@ The game keeps its settings in `~/Documents/Trackmania/Config/Default.json`. It 
 
 [Openplanet](https://openplanet.dev) works in this setup. Version 1.29.14 was tested, with its bundled plugins and some from its Plugin Manager. Two plugin installs failed once with `Unable to open zip file`. The one that was tried again then installed.
 
-Download the installer from openplanet.dev, stop Connect, then run it with the folder that holds `Trackmania.exe`:
+Download the installer from openplanet.dev, quit the game and Connect, then:
 
 ```sh
-bin/tm2020 stop
-WINEPREFIX=~/Games/TM2020/prefix \
-  "$HOME/Library/Application Support/Trackmania2020/runtime/$(cat VERSION)/bin/wine" \
-  OpenplanetNext_1.29.14.exe /S '/D=C:\users\<you>\Games\Trackmania'
+bin/tm2020 openplanet ~/Downloads/OpenplanetNext_1.29.14.exe
 ```
 
-The installer sets the DLL override it needs by itself. Run it again after a game update. With Starter access, Openplanet only loads signed plugins.
+This runs the installer silently with `/S /D=<folder>`, where the folder is the `InstallDir` that Connect wrote to `HKLM\Software\Wow6432Node\Ubisoft\Launcher\Installs\5595`. The installer refuses a folder without `Trackmania.exe`, and sets the DLL override it needs by itself. Run it again after a game update. With Starter access, Openplanet only loads signed plugins.
 
 ## Where files go
 
@@ -105,10 +111,12 @@ The installer sets the DLL override it needs by itself. Run it again after a gam
 | Game settings, maps and replays | `~/Documents/Trackmania` |
 | Logs | `~/Games/TM2020/logs` |
 | Shader cache | `~/Games/TM2020/dxvk-cache` |
-| Runtime | `~/Library/Application Support/Trackmania2020/runtime` |
-| Connect's installer | `~/Library/Caches/Trackmania2020` |
+| Runtime, one folder for each version | `~/Library/Application Support/Trackmania2020/runtime` |
+| Launcher that the app runs | `~/Library/Application Support/Trackmania2020/launcher` |
+| The app | `/Applications/Trackmania 2020.app`, or `~/Applications` when `/Applications` isn't writable |
+| Connect's installer, and downloads while installing | `~/Library/Caches/Trackmania2020` |
 
-Set `TM2020_ROOT`, `TM2020_RUNTIME`, `TM2020_SUPPORT` or `TM2020_CACHE` to use other folders. To remove everything, run `bin/tm2020 stop` and delete these folders. Wine links the prefix's Documents folder to your real one, so keep `~/Documents/Trackmania` if you want your maps and replays.
+Set `TM2020_ROOT`, `TM2020_RUNTIME`, `TM2020_SUPPORT`, `TM2020_CACHE` or `TM2020_APP` to use other folders. `bin/tm2020 app` writes them into the app. `bin/tm2020 uninstall` removes everything in this table except `~/Documents/Trackmania`. Wine links the prefix's Documents folder to your real one, so your maps and replays stay.
 
 ## Metrics
 
@@ -152,7 +160,7 @@ Wine's output is in `~/Games/TM2020/logs/connect.log`. Check it for account deta
 
 ## Development
 
-`make check` runs the script checks and offline tests, and `make probes` builds the test programs. [docs/building.md](docs/building.md) explains the build, [docs/runtime.md](docs/runtime.md) covers each patch and the known limits, and [.github/CONTRIBUTING.md](.github/CONTRIBUTING.md) has the contribution rules.
+`make check` runs the script checks and offline tests, and `make probes` builds the test programs. [building.md](building.md) explains the build and how a release is packed, [runtime.md](runtime.md) covers each patch and the known limits, and [CONTRIBUTING.md](../.github/CONTRIBUTING.md) has the contribution rules.
 
 ## Acknowledgements
 
@@ -170,6 +178,6 @@ This project stands on other people's hard work. With gratitude to:
 
 ## License
 
-This project's own scripts, tests and tools use the MIT license. Patches keep the license of the code they change. See [LICENSE](LICENSE).
+This project's own scripts, tests and tools use the MIT license. Patches keep the license of the code they change. See [LICENSE](../LICENSE).
 
 Trademarks and game content belong to their owners. This is an unofficial community project, not affiliated with Nadeo or Ubisoft.

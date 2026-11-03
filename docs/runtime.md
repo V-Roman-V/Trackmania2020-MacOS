@@ -34,7 +34,7 @@ The stand-in shaders are stored as bytecode in `patches/d9vk/0003`. Their HLSL s
 
 Connect's interface is Chromium, and its GPU process can't reach `upc.exe`'s window through OpenGL, because winemac has no cross-process GL. So `bin/tm2020` turns hardware acceleration off in Connect's settings and the interface composites in software through GDI, which Wine 0002 forwards to the window. This costs two copies per frame, which is fine for a launcher and wrong for a game.
 
-WebGL draws offscreen, so it doesn't need the window. It runs on DXVK in Connect's GPU process, because Ubisoft's sign-in reads the WebGL renderer. See [the README](../README.md#sign-in-and-the-reported-gpu).
+WebGL draws offscreen, so it doesn't need the window. It runs on DXVK in Connect's GPU process, because Ubisoft's sign-in reads the WebGL renderer. See [Sign-in and the reported GPU](development.md#sign-in-and-the-reported-gpu).
 
 The game is a normal 64-bit D3D11 program. It gets DXVK from `bin/tm2020`, which sets DLL overrides for `UplayWebCore.exe` and `Trackmania.exe` only. Everything else in the prefix keeps Wine's own D3D, which stops at feature level 9_3 on this GPU.
 
