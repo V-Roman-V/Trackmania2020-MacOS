@@ -28,16 +28,16 @@ So far this has been tested on one Mac, a MacBook Pro with M5 Pro and macOS 27. 
 A standard Wine setup doesn't get far with Trackmania on a Mac. These are the problems this project had to solve:
 
 - **Signing in.** Ubisoft's sign-in page answers "Access is temporarily restricted" to Connect on Wine. Here it lets you in. Please read [About the sign-in](#about-the-sign-in) to see how.
-- **Ubisoft Connect itself.** Its window stayed blank, and its web pages crashed under Rosetta. Two Wine patches fix both.
+- **Ubisoft Connect itself.** Its window stayed blank, and its web pages crashed under Rosetta. Two Wine patches and one of its settings fix both.
 - **Correct graphics.** Metal rejected 33 of the game's graphics pipelines, so levels had no ground. Metal also has no geometry shaders, which made shadows on High almost black. Patches to DXVK fix both, and every pixel, vertex and compute shader in the game's shader cache, 4,847 of them, now compiles on Metal.
-- **Speed.** Connect kept redrawing its window behind the game, which cost more than a whole CPU core, and now it rests while you play. DXVK's calls into Wine now go across in batches. On the same map, that took the median from 119 to 124 FPS and the slowest 10% from 107 to 114 FPS. Two smaller changes take another 0.4 ms of work per frame off the game's busiest thread.
+- **Speed.** Connect kept redrawing its window behind the game, which cost more than a whole CPU core, and now it rests while you play. DXVK's calls into Wine now go across in batches. On the same map, that raised the median from 119 to 124 FPS, and the frame rate held 90% of the time from 107 to 114 FPS. Two smaller changes take another 0.4 ms of work per frame off the game's busiest thread.
 - **No paid software.** You don't need CrossOver or any other paid tool. Everything is built from public source code, and you can build it yourself.
 
 ## Frame rate
 
 | Display | Settings | Frame rate |
 | --- | --- | --- |
-| Fullscreen, 1800×1169 | Shadows High, 4x MSAA, capped at 150 | Median 123 FPS over 36 minutes, slowest 10% at 106 or more. Each map's median was between 113 and 149 |
+| Fullscreen, 1800×1169 | Shadows High, 4x MSAA, capped at 150 | Median 123 FPS over 36 minutes, and 106 FPS or more 90% of the time. Each map's median was between 113 and 149 |
 | Window, 1600×900 | Shadows High, 4x MSAA, capped at 150 | About 120–150 FPS |
 
 Measured on a 14-inch MacBook Pro with M5 Pro and macOS 27.0.1. The [development notes](docs/development.md#metrics) have more measurements and how they were taken.
