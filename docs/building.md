@@ -5,7 +5,7 @@
 - `install.sh` installs the runtime, Connect, a copy of the launcher files and the Trackmania 2020 app. It downloads the runtime from the GitHub release when none of this version is installed.
 - `bin/tm2020` installs and starts Ubisoft Connect, gives DXVK to the programs that need it, and makes the app.
 - `tools/build-runtime.sh` builds the runtime, and `tools/package.sh` packs it for a release.
-- `tools/app-icon.js` copies the game's icon out of `Trackmania.exe` for the app, with osascript's JavaScript.
+- `tools/app-icon.js` copies Trackmania's icon for the app with osascript's JavaScript, out of `Trackmania.exe` or, before the game is installed, out of the copy that Connect downloads from Ubisoft's CDN.
 - `tools/connect-idle.c` minimizes Connect during play, and is built into the runtime.
 - `tools/session.py` records and reports a play session for `bin/tm2020 diag` and `report`.
 - `config/sources.json` pins every source the runtime is built from.

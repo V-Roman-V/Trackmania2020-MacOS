@@ -30,6 +30,9 @@ export DXVK_LOG_PATH="${DXVK_LOG_PATH:-none}"
 export DXVK_STATE_CACHE_PATH="${DXVK_STATE_CACHE_PATH:-Z:${TM2020_ROOT//\//\\}\\dxvk-cache}"
 
 readonly INSTALLER_URL="https://static3.cdn.ubi.com/orbit/launcher_installer/UbisoftConnectInstaller.exe"
+# Ubisoft's copy of Trackmania's icon, which Connect shows for the game. Its PNG is the same, byte
+# for byte, as the one in Trackmania.exe, so the app looks the same before the game is installed.
+readonly ICON_URL="${TM2020_ICON_URL:-https://ubistatic3-a.akamaihd.net/orbit/uplay_launcher_3_0/assets/8231e71808581ef4d3499fe96ecdf921.ico}"
 readonly CDN_URL="${TM2020_CDN_URL:-http://uplaypc-s-ubisoft.cdn.ubi.com/}"
 readonly INSTALLER="${TM2020_CACHE}/UbisoftConnectInstaller.exe"
 readonly CONNECT_EXE='C:\Program Files (x86)\Ubisoft\Ubisoft Game Launcher\UbisoftConnect.exe'
@@ -184,19 +187,23 @@ install_openplanet() {
   echo 'Done. In the game, press F3 to open Openplanet. On most Mac keyboards that is fn and F3.'
 }
 
-# Gives the app the game's own icon, which stays in the game. See tools/app-icon.js.
+# Gives the app Trackmania's icon, from the installed game or else from Ubisoft's CDN, so nothing
+# of Nadeo's is in this repository. See tools/app-icon.js.
 add_app_icon() {
-  local dir work name size status
+  local dir source work name size status
+  work="$(mktemp -d)"
+  mkdir "${work}/AppIcon.iconset"
   dir="$(game_dir)"
   case "$dir" in
     [Cc]:/*) dir="${WINEPREFIX}/drive_c/${dir#?:/}" ;;
-    *) return 1 ;;
   esac
-  dir="${dir%/}"
-  work="$(mktemp -d)"
-  mkdir "${work}/AppIcon.iconset"
+  source="${dir%/}/Trackmania.exe"
+  if ! test -f "$source"; then
+    source="${work}/icon.ico"
+    curl --fail --silent --location --max-time 30 --output "$source" "$ICON_URL" || true
+  fi
   # Each step runs only if the one before it worked. The app keeps working without an icon.
-  osascript -l JavaScript "${PROJECT}/tools/app-icon.js" "${dir}/Trackmania.exe" "${work}/icon.png" 2>/dev/null &&
+  osascript -l JavaScript "${PROJECT}/tools/app-icon.js" "$source" "${work}/icon.png" 2>/dev/null &&
     for name in 16x16:16 16x16@2x:32 32x32:32 32x32@2x:64 128x128:128 128x128@2x:256 256x256:256; do
       size="${name#*:}"
       sips -z "$size" "$size" "${work}/icon.png" --out "${work}/AppIcon.iconset/icon_${name%:*}.png" >/dev/null

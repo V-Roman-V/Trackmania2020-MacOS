@@ -92,8 +92,6 @@ The runtime comes from this project's [GitHub release](https://github.com/V-Roma
 3. Install Trackmania in Connect and press Play.
 4. Optionally, add Openplanet: download its installer and run one command, see [Openplanet](#openplanet).
 
-The app takes the game's icon once the game is installed.
-
 - **Fullscreen.** Disconnect any external display before you start the game, then choose Fullscreen in the game's display settings. While an external display is connected, the game stays in a window.
 - **Missing parts for a moment.** The first time you visit a map, the game's shaders are prepared in the background, and some parts can be missing for a second. That goes away by itself.
 - **Your files.** Settings, maps and replays are in `Documents/Trackmania`, the same as on Windows.

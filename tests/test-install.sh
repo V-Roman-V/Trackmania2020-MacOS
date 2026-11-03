@@ -17,6 +17,7 @@ export TM2020_SUPPORT="${HOME}/Library/Application Support/Trackmania2020"
 export TM2020_CACHE="${HOME}/Library/Caches/Trackmania2020"
 export TM2020_APP="${HOME}/Applications/Trackmania 2020.app"
 export TM2020_REPO="file://${WORK}/repo"
+export TM2020_ICON_URL="file://${WORK}/icon.ico"
 export PATH="${WORK}/bin:${PATH}"
 readonly PREFIX="${TM2020_ROOT}/prefix"
 readonly RUNTIME="${TM2020_SUPPORT}/runtime/${VERSION}"
@@ -51,12 +52,29 @@ wait_for_wine() {
 # Rosetta is there as far as install.sh can tell. The alert is written down, not shown.
 mkdir -p "${WORK}/bin" "$HOME"
 printf '#!/bin/sh\nexit 0\n' >"${WORK}/bin/arch"
-printf '#!/bin/sh\nprintf "%%s\\n" "$*" >>"%s/alerts.log"\n' "$WORK" >"${WORK}/bin/osascript"
+# JavaScript, which reads the icon, runs for real.
+# shellcheck disable=SC2016 # The stand-in expands these when it runs.
+printf '#!/bin/sh\ntest "$1" = -l && exec /usr/bin/osascript "$@"\nprintf "%%s\\n" "$*" >>"%s/alerts.log"\n' "$WORK" \
+  >"${WORK}/bin/osascript"
 # Telling macOS about the app is written down too, so the test app never reaches its databases.
 printf '#!/bin/sh\nprintf "%%s\\n" "$*" >>"%s/registered.log"\n' "$WORK" >"${WORK}/bin/lsregister"
 printf '#!/bin/sh\nprintf "%%s\\n" "$*" >>"%s/indexed.log"\n' "$WORK" >"${WORK}/bin/mdimport"
 chmod +x "${WORK}/bin/arch" "${WORK}/bin/osascript" "${WORK}/bin/lsregister" "${WORK}/bin/mdimport"
 export LSREGISTER="${WORK}/bin/lsregister"
+
+# The icon on the CDN is an .ico file with a PNG in it. This one has macOS's generic app icon.
+le32() {
+  local shift
+  for shift in 0 8 16 24; do printf '%b' "\\x$(printf %02x $(($1 >> shift & 255)))"; done
+}
+sips -s format png -z 256 256 /System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/GenericApplicationIcon.icns \
+  --out "${WORK}/icon.png" >/dev/null
+{
+  printf '\0\0\1\0\1\0\0\0\0\0\1\0\40\0'
+  le32 "$(stat -f %z "${WORK}/icon.png")"
+  le32 22
+  cat "${WORK}/icon.png"
+} >"${WORK}/icon.ico"
 
 # A runtime whose Wine only writes down what it was asked to run.
 readonly STANDIN="${WORK}/standin/trackmania2020-macos-${VERSION}-runtime"
@@ -108,6 +126,8 @@ test "$(plutil -extract CFBundleIdentifier raw -o - "${TM2020_APP}/Contents/Info
   fail 'the app has the wrong identifier'
 plutil -lint "${TM2020_APP}/Contents/Info.plist" >/dev/null || fail "the app's Info.plist is broken"
 grep -qxF -- "-f ${TM2020_APP}" "${WORK}/registered.log" || fail 'the app was not registered with Launch Services'
+sips -g pixelWidth "${TM2020_APP}/Contents/Resources/AppIcon.icns" 2>/dev/null | grep -qF 'pixelWidth: 256' ||
+  fail 'the app has no icon from the CDN before the game is installed'
 grep -qxF -- "${TM2020_APP}" "${WORK}/indexed.log" || fail 'Spotlight was not asked to index the app'
 bash -n "${TM2020_APP}/Contents/MacOS/tm2020" || fail "the app's script is broken"
 grep -qxF "tm2020=${LAUNCHER// /\\ }/bin/tm2020" "${TM2020_APP}/Contents/MacOS/tm2020" ||
@@ -127,6 +147,11 @@ mv "$RUNTIME" "${RUNTIME}.away"
 expect_exit 0 "${TM2020_APP}/Contents/MacOS/tm2020"
 grep -qF 'No runtime in' "${WORK}/alerts.log" || fail 'the app did not say why it could not start'
 mv "${RUNTIME}.away" "$RUNTIME"
+
+# Without the CDN the app is made all the same, only without an icon.
+expect_exit 0 env TM2020_ICON_URL="file://${WORK}/missing.ico" TM2020_APP="${WORK}/offline.app" "${LAUNCHER}/bin/tm2020" app
+test -x "${WORK}/offline.app/Contents/MacOS/tm2020" || fail 'the app was not made without the CDN'
+test ! -e "${WORK}/offline.app/Contents/Resources/AppIcon.icns" || fail 'the app got an icon from nowhere'
 
 mkdir -p "${WORK}/other.app/Contents"
 plutil -create xml1 "${WORK}/other.app/Contents/Info.plist"
