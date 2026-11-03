@@ -75,6 +75,10 @@ int main(void)
 {
     int polls = 0;
 
+    /* Starting Connect again while it runs starts this again too. One is enough. */
+    CreateMutexW(NULL, FALSE, L"Local\\tm2020-connect-idle");
+    if (GetLastError() == ERROR_ALREADY_EXISTS)
+        return 0;
     while (polls < POLLS_WITHOUT_CONNECT)
     {
         DWORD connect = find_process(L"upc.exe"), game;
