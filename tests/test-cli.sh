@@ -60,7 +60,7 @@ mkdir -p "${TM2020_RUNTIME}/bin" "${TM2020_RUNTIME}/lib/dxvk/x32" "${TM2020_RUNT
 touch "${TM2020_RUNTIME}/libexec/connect-idle.exe"
 cat >"${TM2020_RUNTIME}/bin/wine" <<SH
 #!/bin/sh
-echo "\$WINEDLLOVERRIDES \$*" >>"${WORK}/wine.log"
+printf '%s\n' "\$WINEDLLOVERRIDES \$*" >>"${WORK}/wine.log"
 SH
 chmod +x "${TM2020_RUNTIME}/bin/wine"
 for bits in x32 x64; do
@@ -69,7 +69,7 @@ for bits in x32 x64; do
 done
 mkdir -p "${PREFIX}/drive_c/windows/system32" "${PREFIX}/drive_c/windows/syswow64"
 mkdir -p "${PREFIX}/drive_c/Program Files (x86)/Ubisoft/Ubisoft Game Launcher"
-touch "${PREFIX}/user.reg" "${PREFIX}/drive_c/Program Files (x86)/Ubisoft/Ubisoft Game Launcher/UbisoftConnect.exe"
+touch "${PREFIX}/user.reg" "${PREFIX}/system.reg" "${PREFIX}/drive_c/Program Files (x86)/Ubisoft/Ubisoft Game Launcher/UbisoftConnect.exe"
 
 expect_exit 0 "$TM2020" connect
 cmp -s "${TM2020_RUNTIME}/lib/dxvk/x64/d3d11.dll" "${PREFIX}/drive_c/windows/system32/d3d11.dll" ||
@@ -80,8 +80,45 @@ grep -qF 'AppDefaults\UplayWebCore.exe\DllOverrides' "${WORK}/wine.log" || fail 
 grep -qF 'AppDefaults\Trackmania.exe\DllOverrides' "${WORK}/wine.log" || fail 'no DLL override for Trackmania.exe'
 grep -F 'UbisoftConnect.exe' "${WORK}/wine.log" | grep -qF 'mscoree,mshtml=d' || fail 'Wine can offer to install Mono'
 grep -qF 'connect-idle.exe' "${WORK}/wine.log" || fail 'the helper was not started'
-grep -qF '"hardware_acceleration_mode": {"enabled": false}' \
-  "${PREFIX}/drive_c/users/$(id -un)/AppData/Local/Ubisoft Game Launcher/cache/http2/Local State" ||
-  fail 'software compositing is not set'
+LOCAL_STATE="${PREFIX}/drive_c/users/$(id -un)/AppData/Local/Ubisoft Game Launcher/cache/http2/Local State"
+readonly LOCAL_STATE
+grep -qF '"hardware_acceleration_mode":{"enabled":false}' "$LOCAL_STATE" || fail 'software compositing is not set'
+
+# Connect's own settings stay, and a second start leaves the file alone.
+printf '{"browser":{"enabled_labs_experiments":[]},"hardware_acceleration_mode":{"enabled":true}}' >"$LOCAL_STATE"
+: >"${WORK}/wine.log"
+expect_exit 0 "$TM2020" prepare
+grep -qF '"browser":{"enabled_labs_experiments":[]}' "$LOCAL_STATE" || fail "Connect's other settings were lost"
+grep -qF '"hardware_acceleration_mode":{"enabled":false}' "$LOCAL_STATE" || fail 'software compositing is not set again'
+touch -t 202001010000 "$LOCAL_STATE"
+written="$(stat -f %m "$LOCAL_STATE")"
+expect_exit 0 "$TM2020" prepare
+test "$(stat -f %m "$LOCAL_STATE")" = "$written" || fail 'Local State was written again'
+if grep -qF 'UbisoftConnect.exe' "${WORK}/wine.log"; then fail 'prepare started Connect'; fi
+
+# start comes back at once, and Connect starts after it.
+: >"${WORK}/wine.log"
+expect_exit 0 "$TM2020" start
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  grep -qF 'UbisoftConnect.exe' "${WORK}/wine.log" && break
+  sleep 0.2
+done
+grep -qF 'UbisoftConnect.exe' "${WORK}/wine.log" || fail 'start did not start Connect'
+
+# Openplanet goes into the folder that Connect recorded for the game.
+expect_exit 2 "$TM2020" openplanet "${WORK}/missing.exe"
+touch "${WORK}/OpenplanetNext.exe"
+expect_exit 1 "$TM2020" openplanet "${WORK}/OpenplanetNext.exe"
+expect_output 'Install Trackmania in Ubisoft Connect first'
+cat >>"${PREFIX}/system.reg" <<'REG'
+[Software\\Wow6432Node\\Ubisoft\\Launcher\\Installs\\5595] 1793599005
+#time=1dd6a8ef10d5f38
+"InstallDir"="C:/users/someone/Games/Trackmania/"
+"Language"="en-US"
+
+REG
+expect_exit 0 "$TM2020" openplanet "${WORK}/OpenplanetNext.exe"
+grep -qF "OpenplanetNext.exe /S /D=C:\\users\\someone\\Games\\Trackmania" "${WORK}/wine.log" ||
+  fail "Openplanet's installer did not get the game folder: $(tail -n 1 "${WORK}/wine.log")"
 
 echo 'bin/tm2020 tests passed'

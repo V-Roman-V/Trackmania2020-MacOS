@@ -4,11 +4,18 @@ set -euo pipefail
 
 PROJECT="$(cd "$(dirname "$0")/.." && pwd)"
 readonly PROJECT
+VERSION="$(cat "${PROJECT}/VERSION")"
+readonly VERSION
 
 : "${TM2020_ROOT:=${HOME}/Games/TM2020}"
 : "${TM2020_SUPPORT:=${HOME}/Library/Application Support/Trackmania2020}"
 : "${TM2020_CACHE:=${HOME}/Library/Caches/Trackmania2020}"
-: "${TM2020_RUNTIME:=${TM2020_SUPPORT}/runtime/$(cat "${PROJECT}/VERSION")}"
+: "${TM2020_RUNTIME:=${TM2020_SUPPORT}/runtime/${VERSION}}"
+if test -w /Applications; then
+  : "${TM2020_APP:=/Applications/Trackmania 2020.app}"
+else
+  : "${TM2020_APP:=${HOME}/Applications/Trackmania 2020.app}"
+fi
 
 readonly DXVK_CONF="${PROJECT}/config/dxvk.conf"
 
@@ -34,48 +41,73 @@ readonly WINE="${TM2020_RUNTIME}/bin/wine"
 readonly DXVK_DLLS="${TM2020_RUNTIME}/lib/dxvk"
 readonly CONNECT_IDLE="${TM2020_RUNTIME}/libexec/connect-idle.exe"
 readonly WINDOWS_DIR="${WINEPREFIX}/drive_c/windows"
+readonly APP_ID=local.trackmania2020-macos.connect
+
+fail() {
+  echo "$*" >&2
+  exit 1
+}
 
 require_runtime() {
   test -x "$WINE" && return
-  echo "No runtime in ${TM2020_RUNTIME}. Build it first with: make build" >&2
-  exit 1
+  fail "No runtime in ${TM2020_RUNTIME}. Install it with install.sh, or build it with: make build"
+}
+
+# Wine keeps one server for each prefix, with its socket in a folder named after the
+# prefix's device and inode.
+wine_is_running() {
+  local device inode
+  test -d "$WINEPREFIX" || return 1
+  read -r device inode < <(stat -f '%d %i' "$WINEPREFIX")
+  test -S "$(printf '/tmp/.wine-%s/server-%x-%x/socket' "$(id -u)" "$device" "$inode")" &&
+    pgrep -x wineserver >/dev/null
+}
+
+# Most of what Wine prints looks like an error and isn't, so it goes to a log.
+logged() {
+  "$@" >>"${LOGS}/install.log" 2>&1 && return
+  echo "This failed: $*" >&2
+  echo "Wine's output is in ${LOGS}/install.log" >&2
+  return 1
 }
 
 install_connect() {
   mkdir -p "$TM2020_CACHE" "$LOGS"
   if ! test -f "$INSTALLER"; then
-    curl --fail --location --retry 3 --output "${INSTALLER}.partial" "$INSTALLER_URL"
+    echo "Downloading Ubisoft Connect's installer"
+    curl --fail --location --retry 3 --progress-bar --output "${INSTALLER}.partial" "$INSTALLER_URL"
     mv "${INSTALLER}.partial" "$INSTALLER"
   fi
+  echo 'Installing Ubisoft Connect. This takes a few minutes.'
   if ! test -d "$WINEPREFIX"; then
-    "$WINE" wineboot -i
-    "${TM2020_RUNTIME}/bin/wineserver" -w
+    logged "$WINE" wineboot -i
+    logged "${TM2020_RUNTIME}/bin/wineserver" -w
     # Connect's window needs wined3d's OpenGL backend.
-    "$WINE" reg add 'HKCU\Software\Wine\Direct3D' /v renderer /t REG_SZ /d gl /f
+    logged "$WINE" reg add 'HKCU\Software\Wine\Direct3D' /v renderer /t REG_SZ /d gl /f
     # Crashes go to the log as backtraces, not to a dialog.
-    "$WINE" reg add 'HKCU\Software\Wine\WineDbg' /v ShowCrashDialog /t REG_DWORD /d 0 /f
+    logged "$WINE" reg add 'HKCU\Software\Wine\WineDbg' /v ShowCrashDialog /t REG_DWORD /d 0 /f
   fi
-  "$WINE" start /wait /unix "$INSTALLER" /S
+  logged "$WINE" start /wait /unix "$INSTALLER" /S
 }
 
 # Chromium's GPU process can't reach upc.exe's window through OpenGL here, since
 # winemac has no cross-process GL. Software compositing goes through GDI, which
 # patches/wine/0002 forwards. Connect ignores Chromium switches, so use the pref.
+# This is JavaScript for osascript, because python3 needs Apple's command line tools.
 use_software_compositing() {
-  python3 -I - "$LOCAL_STATE" <<'PY'
-import json, os, sys
-
-path = sys.argv[1]
-state = {}
-if os.path.exists(path):
-    with open(path) as file:
-        state = json.load(file)
-if state.get('hardware_acceleration_mode') != {'enabled': False}:
-    state['hardware_acceleration_mode'] = {'enabled': False}
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, 'w') as file:
-        json.dump(state, file)
-PY
+  mkdir -p "$(dirname "$LOCAL_STATE")"
+  /usr/bin/osascript -l JavaScript - "$LOCAL_STATE" >/dev/null <<'JS'
+ObjC.import('Foundation')
+function run(argv) {
+  const text = $.NSString.stringWithContentsOfFileEncodingError(argv[0], $.NSUTF8StringEncoding, null)
+  const state = text.isNil() ? {} : JSON.parse(text.js)
+  if (JSON.stringify(state.hardware_acceleration_mode) === '{"enabled":false}')
+    return
+  state.hardware_acceleration_mode = {enabled: false}
+  if (!$(JSON.stringify(state)).writeToFileAtomicallyEncodingError(argv[0], true, $.NSUTF8StringEncoding, null))
+    throw new Error('Could not write ' + argv[0])
+}
+JS
 }
 
 # Wine's D3D11 stops at feature level 9_3 on this GPU, so the programs that need
@@ -122,28 +154,153 @@ prepare_connect() {
   use_dxvk UplayWebCore.exe x32 syswow64
   use_dxvk Trackmania.exe x64 system32
   mkdir -p "$LOGS" "${TM2020_ROOT}/dxvk-cache"
+}
+
+start_helper() {
   # Older runtimes don't have this. See tools/connect-idle.c.
   if test -f "$CONNECT_IDLE"; then
     "$WINE" "$CONNECT_IDLE" >/dev/null 2>&1 &
   fi
 }
 
+# Connect records where it installed the game.
+game_dir() {
+  sed -n '/^\[Software\\\\Wow6432Node\\\\Ubisoft\\\\Launcher\\\\Installs\\\\5595\]/,/^$/s/^"InstallDir"="\(.*\)"$/\1/p' \
+    "${WINEPREFIX}/system.reg" 2>/dev/null
+}
+
+# Openplanet's installer only installs next to Trackmania.exe, so it needs the game's folder.
+install_openplanet() {
+  local dir
+  dir="$(game_dir)"
+  test -n "$dir" || fail 'Install Trackmania in Ubisoft Connect first.'
+  ! wine_is_running || fail 'Quit Trackmania and Ubisoft Connect first, then run this again.'
+  mkdir -p "$LOGS"
+  dir="${dir%/}"
+  echo "Installing Openplanet into ${dir}"
+  logged "$WINE" "$1" /S "/D=${dir//\//\\}"
+  echo 'Done. In the game, press F3 to open Openplanet. On most Mac keyboards that is fn and F3.'
+}
+
+# The app is a small script that runs this file's start command, with the folders this
+# installation uses written into it.
+write_app() {
+  local contents="${TM2020_APP}/Contents" found
+  if test -e "$TM2020_APP"; then
+    found="$(plutil -extract CFBundleIdentifier raw -o - "${contents}/Info.plist" 2>/dev/null || true)"
+    test "$found" = "$APP_ID" || fail "${TM2020_APP} is another app. Move it away, or set TM2020_APP to another path."
+  fi
+  mkdir -p "${contents}/MacOS" "${contents}/Resources"
+  cat >"${contents}/Info.plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleExecutable</key><string>tm2020</string>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
+  <key>CFBundleIdentifier</key><string>${APP_ID}</string>
+  <key>CFBundleName</key><string>Trackmania 2020</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleShortVersionString</key><string>${VERSION}</string>
+  <key>LSApplicationCategoryType</key><string>public.app-category.racing-games</string>
+  <key>LSMinimumSystemVersion</key><string>14.0</string>
+  <!-- Connect and the game have their own icons in the Dock, so this one stays out of it. -->
+  <key>LSUIElement</key><true/>
+</dict>
+</plist>
+EOF
+  # shellcheck disable=SC2016 # The single-quoted parts run later, in the app.
+  {
+    echo '#!/bin/bash'
+    echo '# Starts Ubisoft Connect for Trackmania 2020. Written by bin/tm2020 app.'
+    printf 'export TM2020_ROOT=%q TM2020_SUPPORT=%q TM2020_CACHE=%q TM2020_RUNTIME=%q\n' \
+      "$TM2020_ROOT" "$TM2020_SUPPORT" "$TM2020_CACHE" "$TM2020_RUNTIME"
+    printf 'log=%q\n' "${LOGS}/start.log"
+    echo 'mkdir -p "$(dirname "$log")"'
+    printf 'if ! %q start >"$log" 2>&1; then\n' "${PROJECT}/bin/tm2020"
+    printf '  osascript -e %q -e %q -e %q "$(tail -n 1 "$log")" "$log" >/dev/null\n' 'on run argv' \
+      'display alert "Trackmania 2020 could not start" message ((item 1 of argv) & return & return & "The log is " & (item 2 of argv)) as critical' \
+      'end run'
+    echo 'fi'
+  } >"${contents}/MacOS/tm2020.partial"
+  chmod +x "${contents}/MacOS/tm2020.partial"
+  mv -f "${contents}/MacOS/tm2020.partial" "${contents}/MacOS/tm2020"
+  # Finder and Launchpad notice a changed app sooner when its folder is touched.
+  touch "$TM2020_APP"
+  echo "The app is ${TM2020_APP}"
+}
+
+uninstall() {
+  local answer server app=''
+  if test "$(plutil -extract CFBundleIdentifier raw -o - "${TM2020_APP}/Contents/Info.plist" 2>/dev/null)" = "$APP_ID"; then
+    app="$TM2020_APP"
+  fi
+  echo 'This removes Ubisoft Connect, Trackmania and everything else this project installed:'
+  printf '  %s\n' "${TM2020_ROOT}/prefix" "${TM2020_ROOT}/dxvk-cache" "${TM2020_ROOT}/logs" \
+    "$TM2020_SUPPORT" "$TM2020_CACHE" ${app:+"$app"}
+  echo 'Your game settings, maps and replays in ~/Documents/Trackmania stay.'
+  read -r -p 'Type yes to remove all of this: ' answer || true
+  test "$answer" = yes || fail 'Nothing was removed.'
+  for server in "${TM2020_SUPPORT}"/runtime/*/bin/wineserver "${TM2020_RUNTIME}/bin/wineserver"; do
+    if test -x "$server"; then "$server" -k 2>/dev/null || true; fi
+  done
+  if test -n "$app"; then rm -rf "$app"; fi
+  # Removing a folder never follows the prefix's links to your own folders.
+  rm -rf "${TM2020_ROOT}/prefix" "${TM2020_ROOT}/dxvk-cache" "${TM2020_ROOT}/logs" \
+    "${TM2020_SUPPORT}/runtime" "${TM2020_SUPPORT}/launcher" "$TM2020_CACHE"
+  rmdir "$TM2020_ROOT" "$TM2020_SUPPORT" 2>/dev/null || true
+  echo 'Removed.'
+}
+
+usage() {
+  cat >&2 <<EOF
+usage: $(basename "$0") <command>
+
+  start            Start Ubisoft Connect in the background, as the app does
+  connect          Start Connect and wait until it closes
+  stop             Stop Connect and the game
+  openplanet FILE  Install Openplanet with its installer, while the game is closed
+  check-download   Tell whether this network lets Connect download from Ubisoft
+  diag             Start Connect, and record frame rate, CPU and GPU use while you play
+  report           Show what the last diag session recorded
+  prepare          Install Connect if it is missing, and set up the prefix
+  install          Run Connect's installer again
+  app              Make the Trackmania 2020 app, which runs start
+  uninstall        Remove Connect, the game and everything else this project installed
+EOF
+  exit 2
+}
+
 case "${1:-}" in
-  check-download)
-    check_download
-    ;;
-  install)
+  start)
     require_runtime
-    install_connect
+    prepare_connect
+    start_helper
+    # Connect keeps running after this script and the app are done.
+    "$WINE" "$CONNECT_EXE" </dev/null >"${LOGS}/connect.log" 2>&1 &
     ;;
   connect)
     require_runtime
     prepare_connect
+    start_helper
     exec "$WINE" "$CONNECT_EXE" >"${LOGS}/connect.log" 2>&1
+    ;;
+  stop)
+    require_runtime
+    "${TM2020_RUNTIME}/bin/wineserver" -k
+    ;;
+  openplanet)
+    test -f "${2:-}" || usage
+    require_runtime
+    install_openplanet "$2"
+    ;;
+  check-download)
+    check_download
     ;;
   diag)
     require_runtime
     prepare_connect
+    start_helper
     export WINEDEBUG="fixme-all,+timestamp,+pid,+fps${TM2020_TRACE:+,${TM2020_TRACE}}"
     python3 -I "${PROJECT}/tools/session.py" monitor "${LOGS}/session.tsv" &
     exec "$WINE" "$CONNECT_EXE" >"${LOGS}/connect.log" 2>&1
@@ -151,12 +308,23 @@ case "${1:-}" in
   report)
     python3 -I "${PROJECT}/tools/session.py" report "${LOGS}/session.tsv" "${LOGS}/connect.log"
     ;;
-  stop)
+  prepare)
     require_runtime
-    "${TM2020_RUNTIME}/bin/wineserver" -k
+    # A running Connect keeps its own runtime, and the game has the DXVK files open.
+    ! wine_is_running || fail 'Quit Trackmania and Ubisoft Connect first, then run this again.'
+    prepare_connect
+    ;;
+  install)
+    require_runtime
+    install_connect
+    ;;
+  app)
+    write_app
+    ;;
+  uninstall)
+    uninstall
     ;;
   *)
-    echo "usage: $(basename "$0") install|connect|diag|report|stop|check-download" >&2
-    exit 2
+    usage
     ;;
 esac
