@@ -79,7 +79,8 @@ install_connect() {
     mv "${INSTALLER}.partial" "$INSTALLER"
   fi
   echo 'Installing Ubisoft Connect. This takes a few minutes.'
-  if ! test -d "$WINEPREFIX"; then
+  # A first run that failed can leave the folder without its registry, so look for that.
+  if ! test -f "${WINEPREFIX}/system.reg"; then
     logged "$WINE" wineboot -i
     logged "${TM2020_RUNTIME}/bin/wineserver" -w
     # Connect's window needs wined3d's OpenGL backend.

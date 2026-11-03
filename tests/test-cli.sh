@@ -62,7 +62,8 @@ cat >"${TM2020_RUNTIME}/bin/wine" <<SH
 #!/bin/sh
 printf '%s\n' "\$WINEDLLOVERRIDES \$*" >>"${WORK}/wine.log"
 SH
-chmod +x "${TM2020_RUNTIME}/bin/wine"
+cp "${TM2020_RUNTIME}/bin/wine" "${TM2020_RUNTIME}/bin/wineserver"
+chmod +x "${TM2020_RUNTIME}/bin/wine" "${TM2020_RUNTIME}/bin/wineserver"
 for bits in x32 x64; do
   echo "dxgi ${bits}" >"${TM2020_RUNTIME}/lib/dxvk/${bits}/dxgi.dll"
   echo "d3d11 ${bits}" >"${TM2020_RUNTIME}/lib/dxvk/${bits}/d3d11.dll"
@@ -120,5 +121,19 @@ REG
 expect_exit 0 "$TM2020" openplanet "${WORK}/OpenplanetNext.exe"
 grep -qF "OpenplanetNext.exe /S /D=C:\\users\\someone\\Games\\Trackmania" "${WORK}/wine.log" ||
   fail "Openplanet's installer did not get the game folder: $(tail -n 1 "${WORK}/wine.log")"
+
+# A prefix folder without its registry is left from a first run that failed, so it is set up
+# again. A finished one is not.
+mkdir -p "$TM2020_CACHE"
+touch "${TM2020_CACHE}/UbisoftConnectInstaller.exe"
+mv "${PREFIX}/system.reg" "${WORK}/system.reg"
+: >"${WORK}/wine.log"
+expect_exit 0 "$TM2020" install
+grep -qF 'wineboot -i' "${WORK}/wine.log" || fail 'a prefix without its registry was not set up'
+mv "${WORK}/system.reg" "${PREFIX}/system.reg"
+: >"${WORK}/wine.log"
+expect_exit 0 "$TM2020" install
+if grep -qF 'wineboot' "${WORK}/wine.log"; then fail 'a finished prefix was set up again'; fi
+grep -qF 'UbisoftConnectInstaller.exe /S' "${WORK}/wine.log" || fail "Connect's installer did not run"
 
 echo 'bin/tm2020 tests passed'
