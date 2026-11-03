@@ -7,7 +7,7 @@ Reports from other Macs and other macOS versions are very welcome, even if every
 ## Before you start
 
 - You need an Apple Silicon Mac, Rosetta 2, the full Xcode app and Homebrew.
-- Read [docs/building.md](../docs/building.md) for how the runtime is built, and [docs/runtime.md](../docs/runtime.md) for what each patch does.
+- Read [docs/development.md](../docs/development.md) for what works and how it was measured, [docs/building.md](../docs/building.md) for how the runtime is built and released, and [docs/runtime.md](../docs/runtime.md) for what each patch does.
 - Open an issue before a large change, so we can agree on the approach first.
 
 ## Before you open a pull request
@@ -16,7 +16,8 @@ Reports from other Macs and other macOS versions are very welcome, even if every
 make check
 ```
 
-- Keep shell scripts ShellCheck-clean. CI runs `make check` on every push.
+- Keep shell scripts ShellCheck-clean, and safe for macOS's own bash 3.2, which the app and the install line use. CI runs `make check` on every push.
+- Keep what players run free of Python and other tools that a new Mac doesn't have. `osascript` with JavaScript is there on every Mac.
 - A runtime patch goes under `patches/wine` or `patches/d9vk`, with a short header that says what it does and why.
 - Say how you checked a runtime change. Compiling is not enough for a shader change, because MoltenVK can drop a stage without an error, so read the result back or show it in play.
 - Do not commit game files, shaders extracted from the game, installers, your Wine prefix, or anything under `.build`.

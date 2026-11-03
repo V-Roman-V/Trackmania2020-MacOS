@@ -1,5 +1,5 @@
 name: Bug report
-description: Something is broken when building, signing in or playing.
+description: Something is broken when installing, signing in or playing.
 labels: [bug]
 body:
   - type: markdown
@@ -21,11 +21,21 @@ body:
       placeholder: e.g. macOS 27.0.1, M5 Pro
     validations:
       required: true
-  - type: input
-    id: commit
+  - type: dropdown
+    id: install
     attributes:
-      label: Commit you built from
-      description: The output of `git rev-parse --short HEAD`.
+      label: How you installed
+      options:
+        - With the install line from the README
+        - Built the runtime myself with make build
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The first line of `~/Library/Application Support/Trackmania2020/runtime/*/build-info.txt`, or the commit you built from.
+      placeholder: e.g. Trackmania2020-MacOS runtime 1.0.0
     validations:
       required: true
   - type: dropdown
@@ -33,8 +43,9 @@ body:
     attributes:
       label: Where it failed
       options:
+        - Installing
         - make build
-        - Installing or opening Ubisoft Connect
+        - Opening Ubisoft Connect
         - Signing in
         - Downloading the game
         - Starting the game
@@ -52,7 +63,7 @@ body:
     id: logs
     attributes:
       label: Relevant logs
-      description: From ~/Games/TM2020/logs/connect.log. Trim long files.
+      description: From ~/Games/TM2020/logs, such as connect.log, install.log or start.log. Trim long files.
       render: text
     validations:
       required: false
