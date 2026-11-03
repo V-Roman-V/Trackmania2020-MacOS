@@ -1,22 +1,20 @@
 # Trackmania 2020 for Apple Silicon Macs
 
-Play Trackmania (2020) on a Mac with an M-series chip. This free, open-source project runs Ubisoft Connect and the game through Wine, with fixes for Apple's graphics and some speed-ups of its own. One line in Terminal installs everything, and then you start the game from an app like any other.
+Play Trackmania (2020) on a Mac with an M-series chip. This free, open-source project runs Ubisoft Connect and the game through Wine, with fixes for Apple's graphics and some speed-ups of its own. An install script sets up the runtime and Ubisoft Connect, and adds a Trackmania 2020 app.
 
 | In a race | Main menu |
 | --- | --- |
 | ![A race with the frame rate counter on](docs/images/race.png) | ![Trackmania's main menu](docs/images/menu.png) |
-| **Shadows on High** | **Ubisoft Connect** |
-| ![A track with shadows on High](docs/images/shadows.png) | ![Ubisoft Connect with Trackmania ready to play](docs/images/connect.png) |
-
-The screenshots are from a MacBook Pro with M5 Pro, in fullscreen at 1800×1169 with Shadows High and 4x MSAA.
+| **Online race** | **Ubisoft Connect** |
+| ![An online race](docs/images/online.png) | ![Ubisoft Connect with Trackmania ready to play](docs/images/connect.png) |
 
 ## What works
 
 | Part | Status |
 | --- | --- |
 | Ubisoft Connect | Opens, signs in, downloads and updates the game |
-| The game | Draws correctly on Apple's Metal, including shadows on High |
-| Frame rate | 120–150 FPS on an M5 Pro with Shadows High and 4x MSAA |
+| The game | Draws correctly on Apple's Metal |
+| Frame rate | Median 123 FPS in fullscreen at 1800×1169, see [Frame rate](#frame-rate) |
 | Online races | Work, with free Starter access and with Club access |
 | Openplanet | Works, with plugins from its Plugin Manager |
 | Fullscreen | Works on the Mac's own display. While an external display is connected, the game stays in a window |
@@ -29,7 +27,7 @@ A standard Wine setup doesn't get far with Trackmania on a Mac. These are the pr
 
 - **Signing in.** Ubisoft's sign-in page answers "Access is temporarily restricted" to Connect on Wine. Here it lets you in. Please read [About the sign-in](#about-the-sign-in) to see how.
 - **Ubisoft Connect itself.** Its window stayed blank, and its web pages crashed under Rosetta. Two Wine patches and one of its settings fix both.
-- **Correct graphics.** Metal rejected 33 of the game's graphics pipelines, so levels had no ground. Metal also has no geometry shaders, which made shadows on High almost black. Patches to DXVK fix both, and every pixel, vertex and compute shader in the game's shader cache, 4,847 of them, now compiles on Metal.
+- **Correct graphics.** Metal rejected 33 of the game's graphics pipelines, so levels had no ground. Metal also has no geometry shaders, which two of the game's lighting passes need. Patches to DXVK fix both, and every pixel, vertex and compute shader in the game's shader cache, 4,847 of them, now compiles on Metal.
 - **Speed.** Connect kept redrawing its window behind the game, which cost more than a whole CPU core, and now it rests while you play. DXVK's calls into Wine now go across in batches. On the same map, that raised the median from 119 to 124 FPS, and the frame rate held 90% of the time from 107 to 114 FPS. Two smaller changes take another 0.4 ms of work per frame off the game's busiest thread.
 - **No paid software.** You don't need CrossOver or any other paid tool. Everything is built from public source code, and you can build it yourself.
 
@@ -38,30 +36,25 @@ A standard Wine setup doesn't get far with Trackmania on a Mac. These are the pr
 | Display | Settings | Frame rate |
 | --- | --- | --- |
 | Fullscreen, 1800×1169 | Shadows High, 4x MSAA, capped at 150 | Median 123 FPS over 36 minutes, and 106 FPS or more 90% of the time. Each map's median was between 113 and 149 |
-| Window, 1600×900 | Shadows High, 4x MSAA, capped at 150 | About 120–150 FPS |
 
-Measured on a 14-inch MacBook Pro with M5 Pro and macOS 27.0.1. The [development notes](docs/development.md#metrics) have more measurements and how they were taken.
+Measured on the same Mac. The [development notes](docs/development.md#metrics) have more measurements and how they were taken.
 
 ## What you need
 
 - A Mac with Apple Silicon, M1 or newer. Intel Macs are not supported.
-- macOS 14 Sonoma or newer. Only macOS 27 has been tested so far.
+- macOS 14 Sonoma or newer.
 - About 10 GB of free disk space. The game takes 6.4 GB.
-- A Ubisoft account. Starter access to Trackmania is free, and Club is Ubisoft's yearly subscription. Both work.
-- An internet connection that allows game downloads. Some school and office networks block Ubisoft's download server.
-
-You don't need Xcode, Homebrew or any other programming tools.
+- A Ubisoft account with Trackmania access, free Starter or Club.
 
 ## Install
 
-1. Open Terminal: press ⌘ Space, type `Terminal` and press Return.
-2. Copy this line, paste it into Terminal and press Return:
+Run in Terminal:
 
-   ```sh
-   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/V-Roman-V/Trackmania2020-MacOS/main/install.sh)"
-   ```
+```sh
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/V-Roman-V/Trackmania2020-MacOS/main/install.sh)"
+```
 
-3. Wait until it says **Trackmania2020-MacOS 1.0.0 is installed**. It downloads about 110 MB for this project and 250 MB for Ubisoft Connect, installs Rosetta 2 if your Mac doesn't have it yet, and installs Connect. That takes a few minutes. Then you can close Terminal.
+The script installs Rosetta 2 if it is missing, the runtime from this project's GitHub release (about 110 MB) and Ubisoft Connect (about 250 MB), and adds the Trackmania 2020 app. It takes a few minutes.
 
 <details>
 <summary>What the installer puts on your Mac</summary>
@@ -80,14 +73,11 @@ The runtime comes from this project's [GitHub release](https://github.com/V-Roma
 
 ## Play
 
-1. Open **Trackmania 2020** from Launchpad or the Applications folder. Ubisoft Connect opens after a few seconds. The very first start takes longer.
+1. Open the Trackmania 2020 app, which starts Ubisoft Connect.
 2. Read [About the sign-in](#about-the-sign-in), then sign in with your Ubisoft account.
-3. Find Trackmania in Connect and download it.
-4. Press Play.
+3. Install Trackmania in Connect and press Play.
 
-From then on, the app starts Connect and you press Play there. After the first start with the game installed, the app also gets the game's icon.
-
-A few things to know:
+The app takes the game's icon once the game is installed.
 
 - **Fullscreen.** Disconnect any external display before you start the game, then choose Fullscreen in the game's display settings. While an external display is connected, the game stays in a window.
 - **Missing parts for a moment.** The first time you visit a map, the game's shaders are prepared in the background, and some parts can be missing for a second. That goes away by itself.
@@ -109,13 +99,13 @@ Reporting hardware you don't have to pass a security check is your own decision,
 
 1. Download Openplanet's installer for Trackmania from [openplanet.dev](https://openplanet.dev/download). If you downloaded it before, delete the older file from Downloads.
 2. Quit the game and Ubisoft Connect.
-3. Paste this into Terminal and press Return:
+3. Run:
 
    ```sh
    "$HOME/Library/Application Support/Trackmania2020/launcher/bin/tm2020" openplanet ~/Downloads/OpenplanetNext_*.exe
    ```
 
-4. Start the game, and press F3 to open Openplanet. On most Mac keyboards that is fn and F3 together.
+4. Start the game. F3 (fn F3 on most Mac keyboards) opens Openplanet.
 
 Install it again after each game update. With Starter access, Openplanet only loads signed plugins.
 
@@ -125,7 +115,7 @@ Run the same install line again. The game, your sign-in and your settings stay. 
 
 ## Uninstall
 
-Paste this into Terminal, press Return and type `yes`:
+Run this and confirm with `yes`:
 
 ```sh
 "$HOME/Library/Application Support/Trackmania2020/launcher/bin/tm2020" uninstall
