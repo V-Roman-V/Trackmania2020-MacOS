@@ -47,7 +47,7 @@ Calls that go through wineserver cost more. In `tests/probes/callbench.c`, setti
 | `MsgWaitForMultipleObjectsEx` with no wait | 27 | 8.8 µs | 0.24 ms |
 | `ReadProcessMemory` on itself, mostly 1 byte | 121 | 815 ns | 0.10 ms |
 
-These counts come from one traced run on one map. The clock count follows frames and not time: it stays near 1,000 per frame in menus at 95 and at 127 FPS. Wine 0005 removes the first row, and Wine 0006 the second. The third stays, because moving it to the Windows side would turn a failed read into an exception that the game would see.
+These counts come from one traced run on one map. The clock count follows frames and not time: it stays near 1,000 per frame in menus at 95 and at 127 FPS. Wine 0005 removes the first row, and Wine 0006 the second. In a minute of driving on the same map without the trace, the busiest thread then did 5.0 ms of work per frame instead of 5.4 ms, which is less than the table adds up to. At about 122 FPS it still isn't running for about 3 ms of each frame. The third stays, because moving it to the Windows side would turn a failed read into an exception that the game would see.
 
 ## Connect during play
 

@@ -63,7 +63,7 @@ Three changes make the game cheaper to run, and none of them touches a game sett
 
 **Fewer switches into Wine.** Every Vulkan call from DXVK has to switch from Windows code to Unix code, and under Rosetta each switch takes about 390 ns, which added up to most of the work of DXVK's render thread. Calls that return nothing now wait in a queue and go across together. To compare with the old way, start Connect with `WINEVULKAN_NO_BATCH=1 bin/tm2020 connect`.
 
-**Reading the clock stays in Windows code.** The game reads the clock about 1,900 times per frame, and each read used to be one of those switches. Under Rosetta the same time can be read with one fast instruction, which takes about 9 ns where the switch took 400 ns. The game also checks its message queue about 27 times per frame, and each check went through Wine's server. It can now read the answer from shared memory, which takes 441 ns where the server took 10 µs. To compare with the old way, start Connect with `WINE_QPC_NO_TSC=1 WINE_MSGWAIT_ASK_SERVER=1 bin/tm2020 connect`. Neither of these has been measured in play yet.
+**Reading the clock stays in Windows code.** The game reads the clock about 1,900 times per frame, and each read used to be one of those switches. Under Rosetta the same time can be read with one fast instruction, which takes about 9 ns where the switch took 400 ns. The game also checks its message queue about 27 times per frame, and each check went through Wine's server. It can now read the answer from shared memory, which takes 441 ns where the server took 10 µs. To compare with the old way, start Connect with `WINE_QPC_NO_TSC=1 WINE_MSGWAIT_ASK_SERVER=1 bin/tm2020 connect`. In play they took about 0.4 ms of work per frame off the game's busiest thread, but in the one minute of driving measured so far the frame rate did not go up.
 
 The first two changes are confirmed in play. Connect's median CPU use was 0% over a 36-minute session. On one map with the same settings, the second-busiest game thread went from 5.3 ms to 2.8 ms per frame, and the median went from 119 to 124 FPS. That is one run each, about 12 minutes long. The busiest thread barely changed and looks like the next limit. `bin/tm2020 diag` records what a real session does.
 
@@ -132,6 +132,7 @@ Measured on an Apple M5 Pro with macOS 27.0.1 on 2 November 2026. The offline te
 | Ubisoft Connect CPU use | About 120–140% of one core with its window open, 1% with it minimized | Idle |
 | Ubisoft Connect CPU use during play | Median 0% with the helper over 36 minutes | In play |
 | Same map before and after `patches/wine/0004` and `patches/d9vk/0004`, one run each | Median 119 → 124 FPS, slowest 10% at 107 → 114, samples under 110 FPS 16% → 3%, game CPU 274% → 227% of a core, GPU about the same | In play |
+| Same map before and after `patches/wine/0005` and `0006`, the first minute of one run each | Busiest game thread 5.4 → 5.0 ms of work per frame, wineserver 10.7% → 9.7% of a core, median 129 → 122 FPS; too short to tell the frame rate | In play |
 | Game install size | 6.4 GB | On disk |
 
 ## Troubleshooting
