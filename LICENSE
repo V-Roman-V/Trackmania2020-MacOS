@@ -3,9 +3,14 @@ Patches keep the license of the code they change: LGPL-2.1-or-later for Wine,
 zlib for DXVK and D9VK. This license does not cover Trackmania, Ubisoft Connect,
 Openplanet or Apple software, none of which are part of this repository.
 
+tools/build-runtime.sh follows the builder of TrackMania-MacOS, and the patches
+in patches/wine/base and the notices in licenses/ come from it, so its copyright
+notice is listed below as well.
+
 MIT License
 
 Copyright (c) 2026 Trackmania2020-MacOS contributors
+Copyright (c) 2026 TMNF contributors (TrackMania-MacOS)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
