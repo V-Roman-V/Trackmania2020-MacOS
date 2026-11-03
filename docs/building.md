@@ -6,8 +6,10 @@
 - `tools/build-runtime.sh` builds the runtime.
 - `tools/connect-idle.c` minimizes Connect during play, and is built into the runtime.
 - `tools/session.py` records and reports a play session for `bin/tm2020 diag` and `report`.
+- `config/sources.json` pins every source the runtime is built from.
 - `config/dxvk.conf` holds the DXVK settings for each program.
-- `patches/wine` and `patches/d9vk` are the changes to Wine and DXVK. [Runtime](runtime.md) describes each one.
+- `patches/wine` and `patches/d9vk` are the changes to Wine and DXVK. `patches/wine/base` holds general macOS fixes from TrackMania-MacOS, which apply first. [Runtime](runtime.md) describes each one.
+- `licenses` holds the compiler runtime notices that go into the runtime.
 - `tests/test-cli.sh` tests `bin/tm2020` with stand-ins for curl and Wine.
 - `tests/probes` holds small Windows programs that check displays, fullscreen, shader compilation and speed.
 - `tools/standin-shaders.c` is the source of the bytecode in `patches/d9vk/0003`.
@@ -18,10 +20,14 @@ Everything generated goes under `.build`, which is never committed.
 
 `make build` runs `tools/build-runtime.sh`, which:
 
-1. Clones [TrackMania-MacOS](https://github.com/vakesz/TrackMania-MacOS) at a pinned commit into `.build/runtime`.
-2. Copies `patches/wine` into that checkout with a `tm2020-` prefix, so that they apply after its own patches, then runs its builder. This downloads the pinned sources, checks them, and builds Wine, MoltenVK and the libraries they need. It also builds parts that this project does not use, such as x87sidecar.
-3. Builds `d3d11.dll` and `dxgi.dll` from the same D9VK source for 32-bit and 64-bit programs, with the patches for each.
-4. Copies the result to `~/Library/Application Support/Trackmania2020/runtime/<VERSION>` and adds DXVK in `lib/dxvk`.
+1. Checks for an Apple Silicon Mac with Rosetta, the full Xcode and Homebrew, and installs the Homebrew tools that are missing: `mingw-w64`, `meson`, `ninja`, `glslang`, `bison`, `flex` and `pkgconf`.
+2. Downloads the sources pinned in `config/sources.json` into `.build/runtime/sources`. Wine and D9VK come from git at fixed revisions. MoltenVK and the six libraries come as release archives, which have to match their SHA-256. Then it applies `patches/wine/base` and `patches/wine` to Wine.
+3. Builds freetype, gmp, nettle, libtasn1, libunistring, gnutls and MoltenVK for x86_64, then Wine for 32-bit and 64-bit Windows programs.
+4. Puts the runtime together. Every macOS binary is relinked to the libraries next to it, stripped and signed, and the license files of every source are copied into `licenses`.
+5. Builds `d3d11.dll` and `dxgi.dll` from the D9VK source for 32-bit and 64-bit programs, with the patches for each, and `connect-idle.exe`.
+6. Checks that no file contains the checkout path, so nobody's home folder ends up in a runtime, and moves the result to `~/Library/Application Support/Trackmania2020/runtime/<VERSION>`.
+
+The output of every command goes to `.build/runtime/build.log`.
 
 An installed runtime is never replaced. To rebuild, remove it first, or set `TM2020_RUNTIME` to another folder. `bin/tm2020` reads the same variable, so you can try a new runtime next to the old one:
 
@@ -30,13 +36,13 @@ TM2020_RUNTIME="$PWD/.build/runtime-new" make build
 TM2020_RUNTIME="$PWD/.build/runtime-new" bin/tm2020 connect
 ```
 
-Use a checkout path without spaces, since Wine's makefiles need that. Builds use every CPU core by default. Set `TMNF_JOBS=8` to leave some free.
+Use a checkout path without spaces, since Wine's makefiles need that. Builds use every CPU core by default. Set `TM2020_JOBS=8` to leave some free.
 
-Running `make build` again after changing a patch reuses what is still valid. DXVK is always rebuilt from a clean copy.
+Running `make build` again reuses what is still valid, and takes about a minute. After a change to a Wine patch, only the files that Wine's patches touch are compiled again. DXVK is always rebuilt from a clean copy.
 
 ## Changing a patch
 
-Patches are the edit surface, because the trees under `.build` are thrown away. A Wine patch has to apply after TrackMania-MacOS's own patches, against the Wine revision pinned in its `config/sources.json`. A D9VK patch goes on the same prepared source, which is in `.build/runtime/TrackMania-MacOS/.build/release/sources/d9vk`.
+Patches are the edit surface, because the trees under `.build` are thrown away. A Wine patch has to apply with `git apply` after the ones in `patches/wine/base`, against the Wine revision in `config/sources.json`. A D9VK patch goes on the D9VK revision there. The prepared trees are in `.build/runtime/sources`.
 
 Keep a short header in each patch that says what it does and why.
 

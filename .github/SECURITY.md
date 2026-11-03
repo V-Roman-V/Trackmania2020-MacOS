@@ -15,7 +15,7 @@ Include the commit you tested, your macOS version and Mac model, and the steps t
 A report matters most for:
 
 - `bin/tm2020`, which downloads Ubisoft's Connect installer over HTTPS. Ubisoft replaces that file over time, so it has no pinned checksum.
-- `tools/build-runtime.sh`, which clones TrackMania-MacOS at a pinned commit and runs its builder.
+- `tools/build-runtime.sh`, which downloads the sources pinned in `config/sources.json` and checks each against its revision or SHA-256.
 - The Wine and D9VK patches under `patches/`.
 
 Trackmania, Ubisoft Connect and Openplanet are not part of this repository, so please report flaws in them to their vendors. For flaws in Wine, DXVK, MoltenVK or the libraries built with them, please coordinate with those projects as well.

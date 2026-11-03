@@ -38,7 +38,7 @@ make build
 bin/tm2020 connect
 ```
 
-`make build` downloads pinned sources and compiles Wine, MoltenVK and DXVK. That took about 20 minutes on an M5 Pro with the Homebrew tools already installed. The steps are in [docs/building.md](docs/building.md).
+`make build` downloads pinned sources and compiles Wine, MoltenVK and DXVK. That took about 12 minutes on an M5 Pro with the Homebrew tools already installed. The steps are in [docs/building.md](docs/building.md).
 
 `bin/tm2020 connect` installs Ubisoft Connect on first use and starts it. Sign in, install Trackmania from Connect, and press Play there.
 
@@ -155,7 +155,7 @@ Wine's output is in `~/Games/TM2020/logs/connect.log`. Check it for account deta
 
 This project stands on other people's hard work. With gratitude to:
 
-- [TrackMania-MacOS](https://github.com/vakesz/TrackMania-MacOS) for the Wine runtime and build system this one starts from.
+- [TrackMania-MacOS](https://github.com/vakesz/TrackMania-MacOS) for the way to build Wine on Apple Silicon that this build follows, and for five of the Wine patches.
 - [Wine](https://www.winehq.org) for the Windows compatibility layer everything here is built on.
 - [DXVK](https://github.com/doitsujin/dxvk) and the [d9vk fork](https://github.com/Sikarugir-App/d9vk) for turning Direct3D into Vulkan.
 - [MoltenVK](https://github.com/KhronosGroup/MoltenVK) for running Vulkan on Apple's Metal.

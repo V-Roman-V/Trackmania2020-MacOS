@@ -1,11 +1,16 @@
 # Runtime
 
-The runtime starts from the Wine 11.17 runtime of [TrackMania-MacOS](https://github.com/vakesz/TrackMania-MacOS), which is x86_64 and runs under Rosetta 2 with new WoW64 and MoltenVK. This project adds six Wine patches and builds DXVK for 32-bit and 64-bit programs. [Building](building.md) explains how the pieces are put together.
+The runtime is Wine 11.17 built for x86_64. It runs under Rosetta 2 with new WoW64, and draws through MoltenVK 1.4.2. Wine gets five general macOS patches from [TrackMania-MacOS](https://github.com/vakesz/TrackMania-MacOS) and six of this project's own. DXVK is built for 32-bit and 64-bit programs. [Building](building.md) explains how the pieces are put together.
 
 ## Patches
 
 | Patch | Purpose | How it was checked |
 | --- | --- | --- |
+| Wine base 0002 | Give winmm's multimedia timers their own lock, so they don't wait on other winmm calls | TrackMania-MacOS's tests, and every play session here |
+| Wine base 0005 | Answer `SleepEx(0, TRUE)` without asking wineserver when no APC is waiting | Same |
+| Wine base 0009 | Report no audio capture devices, so macOS never asks for the microphone | Same |
+| Wine base 0010 | Report why WinHTTP rejected a certificate, without weakening the check | Same |
+| Wine base 0011 | Keep the certificate errors that a request didn't ask to ignore | Same |
 | Wine 0001 | Enter 64-bit code with a far call under Rosetta, because a far jump can leave the translator in 32-bit mode | Connect's renderer processes stop crashing |
 | Wine 0002 | Forward drawing on another process's window to the process that owns it, so Connect's software-composited window appears | Connect's main window draws |
 | Wine 0003 | Keep WebGL on D3D11 in Connect's GPU process, since Connect ignores Chromium switches | Sign-in passes; a test program read the WebGL renderer string through Connect's own ANGLE libraries |
@@ -20,6 +25,8 @@ The runtime starts from the Wine 11.17 runtime of [TrackMania-MacOS](https://git
 Sign-in started to pass after D9VK 0001 and a fresh browser profile for Connect were tried together, so it isn't known which of the two mattered. If sign-in breaks after a Connect update, look at both first.
 
 The 32-bit DXVK only has D9VK 0001. Only Connect uses it, and that is the build that passed sign-in. The 64-bit DXVK has all four.
+
+TrackMania-MacOS has more patches, for Direct3D 9 shaders, d3dx9, its x87 helper and the Direct3D 9 parts of D9VK. Trackmania 2020 and Connect use none of those, so they are left out, and so are the parts of its build that only TrackMania Nations Forever needs.
 
 The stand-in shaders are stored as bytecode in `patches/d9vk/0003`. Their HLSL source is in `tools/standin-shaders.c`.
 
