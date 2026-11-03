@@ -182,6 +182,37 @@ install_openplanet() {
   echo 'Done. In the game, press F3 to open Openplanet. On most Mac keyboards that is fn and F3.'
 }
 
+# Gives the app the game's own icon, which stays in the game. See tools/app-icon.js.
+add_app_icon() {
+  local dir work name size status
+  dir="$(game_dir)"
+  case "$dir" in
+    [Cc]:/*) dir="${WINEPREFIX}/drive_c/${dir#?:/}" ;;
+    *) return 1 ;;
+  esac
+  dir="${dir%/}"
+  work="$(mktemp -d)"
+  mkdir "${work}/AppIcon.iconset"
+  # Each step runs only if the one before it worked. The app keeps working without an icon.
+  osascript -l JavaScript "${PROJECT}/tools/app-icon.js" "${dir}/Trackmania.exe" "${work}/icon.png" 2>/dev/null &&
+    for name in 16x16:16 16x16@2x:32 32x32:32 32x32@2x:64 128x128:128 128x128@2x:256 256x256:256; do
+      size="${name#*:}"
+      sips -z "$size" "$size" "${work}/icon.png" --out "${work}/AppIcon.iconset/icon_${name%:*}.png" >/dev/null
+    done &&
+    iconutil -c icns "${work}/AppIcon.iconset" -o "${TM2020_APP}/Contents/Resources/AppIcon.icns"
+  status=$?
+  rm -rf "$work"
+  return "$status"
+}
+
+# The game is usually installed after the app is made, so the app gets its icon on a later start.
+refresh_app_icon() {
+  test ! -f "${TM2020_APP}/Contents/Resources/AppIcon.icns" || return 0
+  test "$(plutil -extract CFBundleIdentifier raw -o - "${TM2020_APP}/Contents/Info.plist" 2>/dev/null)" = "$APP_ID" ||
+    return 0
+  if add_app_icon; then touch "$TM2020_APP"; fi
+}
+
 # The app is a small script that runs this file's start command, with the folders this
 # installation uses written into it.
 write_app() {
@@ -209,22 +240,25 @@ write_app() {
 </dict>
 </plist>
 EOF
-  # shellcheck disable=SC2016 # The single-quoted parts run later, in the app.
   {
     echo '#!/bin/bash'
     echo '# Starts Ubisoft Connect for Trackmania 2020. Written by bin/tm2020 app.'
-    printf 'export TM2020_ROOT=%q TM2020_SUPPORT=%q TM2020_CACHE=%q TM2020_RUNTIME=%q\n' \
-      "$TM2020_ROOT" "$TM2020_SUPPORT" "$TM2020_CACHE" "$TM2020_RUNTIME"
+    printf 'export TM2020_ROOT=%q TM2020_SUPPORT=%q TM2020_CACHE=%q TM2020_RUNTIME=%q TM2020_APP=%q\n' \
+      "$TM2020_ROOT" "$TM2020_SUPPORT" "$TM2020_CACHE" "$TM2020_RUNTIME" "$TM2020_APP"
+    printf 'tm2020=%q\n' "${PROJECT}/bin/tm2020"
     printf 'log=%q\n' "${LOGS}/start.log"
-    echo 'mkdir -p "$(dirname "$log")"'
-    printf 'if ! %q start >"$log" 2>&1; then\n' "${PROJECT}/bin/tm2020"
-    printf '  osascript -e %q -e %q -e %q "$(tail -n 1 "$log")" "$log" >/dev/null\n' 'on run argv' \
-      'display alert "Trackmania 2020 could not start" message ((item 1 of argv) & return & return & "The log is " & (item 2 of argv)) as critical' \
-      'end run'
-    echo 'fi'
+    cat <<'SH'
+mkdir -p "$(dirname "$log")"
+if ! "$tm2020" start >"$log" 2>&1; then
+  osascript -e 'on run argv' \
+    -e 'display alert "Trackmania 2020 could not start" message ((item 1 of argv) & return & return & "The log is " & (item 2 of argv)) as critical' \
+    -e 'end run' "$(tail -n 1 "$log")" "$log" >/dev/null
+fi
+SH
   } >"${contents}/MacOS/tm2020.partial"
   chmod +x "${contents}/MacOS/tm2020.partial"
   mv -f "${contents}/MacOS/tm2020.partial" "${contents}/MacOS/tm2020"
+  add_app_icon || true
   # Finder and Launchpad notice a changed app sooner when its folder is touched.
   touch "$TM2020_APP"
   echo "The app is ${TM2020_APP}"
@@ -276,6 +310,7 @@ case "${1:-}" in
     require_runtime
     prepare_connect
     start_helper
+    refresh_app_icon
     # Connect keeps running after this script and the app are done.
     "$WINE" "$CONNECT_EXE" </dev/null >"${LOGS}/connect.log" 2>&1 &
     ;;

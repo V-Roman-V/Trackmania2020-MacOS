@@ -104,7 +104,7 @@ install_launcher() {
   mkdir -p "${partial}/bin" "${partial}/config" "${partial}/tools"
   cp "${PROJECT}/bin/tm2020" "${partial}/bin/"
   cp "${PROJECT}/config/dxvk.conf" "${partial}/config/"
-  cp "${PROJECT}/tools/session.py" "${partial}/tools/"
+  cp "${PROJECT}/tools/session.py" "${PROJECT}/tools/app-icon.js" "${partial}/tools/"
   cp "${PROJECT}/VERSION" "${PROJECT}/LICENSE" "${partial}/"
   rm -rf "$LAUNCHER"
   mv "$partial" "$LAUNCHER"

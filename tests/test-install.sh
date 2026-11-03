@@ -95,7 +95,7 @@ expect_output "Trackmania2020-MacOS ${VERSION} is installed"
 grep -qxF -- '--version' "${WORK}/wine.log" || fail 'the runtime was not tried before it was installed'
 cmp -s "${STANDIN}/bin/wine" "${RUNTIME}/bin/wine" || fail 'the runtime is not installed'
 test ! -e "${TM2020_CACHE}/${ARCHIVE##*/}" || fail 'the downloaded archive was left behind'
-for file in bin/tm2020 config/dxvk.conf tools/session.py VERSION LICENSE; do
+for file in bin/tm2020 config/dxvk.conf tools/session.py tools/app-icon.js VERSION LICENSE; do
   cmp -s "${PROJECT}/${file}" "${LAUNCHER}/${file}" || fail "the launcher has no copy of ${file}"
 done
 cmp -s "${RUNTIME}/lib/dxvk/x64/d3d11.dll" "${PREFIX}/drive_c/windows/system32/d3d11.dll" ||
@@ -104,7 +104,7 @@ test "$(plutil -extract CFBundleIdentifier raw -o - "${TM2020_APP}/Contents/Info
   fail 'the app has the wrong identifier'
 plutil -lint "${TM2020_APP}/Contents/Info.plist" >/dev/null || fail "the app's Info.plist is broken"
 bash -n "${TM2020_APP}/Contents/MacOS/tm2020" || fail "the app's script is broken"
-grep -qF "${LAUNCHER// /\\ }/bin/tm2020 start" "${TM2020_APP}/Contents/MacOS/tm2020" ||
+grep -qxF "tm2020=${LAUNCHER// /\\ }/bin/tm2020" "${TM2020_APP}/Contents/MacOS/tm2020" ||
   fail "the app doesn't run the launcher: $(cat "${TM2020_APP}/Contents/MacOS/tm2020")"
 
 expect_exit 0 "${PROJECT}/install.sh"
