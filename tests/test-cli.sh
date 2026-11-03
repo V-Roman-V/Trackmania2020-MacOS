@@ -45,16 +45,16 @@ printf '%s' "$CURL_RESPONSE"
 SH
 chmod +x "${WORK}/bin/curl"
 
-check_network() {
+check_download() {
   local wanted="$1" response="$2" result="$3"
-  CURL_RESPONSE="$response" PATH="${WORK}/bin:${PATH}" expect_exit "$wanted" "$TM2020" check
+  CURL_RESPONSE="$response" PATH="${WORK}/bin:${PATH}" expect_exit "$wanted" "$TM2020" check-download
   expect_output "$result"
 }
 
-check_network 1 '' 'NO ANSWER'
-check_network 1 $'HTTP/1.1 403 Forbidden\r\n\r\n<title>Application Control Violation</title>' 'BLOCKED'
-check_network 0 $'HTTP/1.1 403 Forbidden\r\nServer: AkamaiGHost\r\n\r\n' 'OPEN'
-check_network 1 $'HTTP/1.1 403 Forbidden\r\nServer: filter\r\n\r\n<title>Page</title>' 'UNKNOWN'
+check_download 1 '' 'NO ANSWER'
+check_download 1 $'HTTP/1.1 403 Forbidden\r\n\r\n<title>Application Control Violation</title>' 'BLOCKED'
+check_download 0 $'HTTP/1.1 403 Forbidden\r\nServer: AkamaiGHost\r\n\r\n' 'OPEN'
+check_download 1 $'HTTP/1.1 403 Forbidden\r\nServer: filter\r\n\r\n<title>Page</title>' 'UNKNOWN'
 
 mkdir -p "${TM2020_RUNTIME}/bin" "${TM2020_RUNTIME}/lib/dxvk/x32" "${TM2020_RUNTIME}/lib/dxvk/x64" "${TM2020_RUNTIME}/libexec"
 touch "${TM2020_RUNTIME}/libexec/connect-idle.exe"

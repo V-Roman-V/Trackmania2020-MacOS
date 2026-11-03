@@ -95,7 +95,7 @@ use_dxvk() {
 
 # The CDN refuses a bare request either way, so the status code says nothing.
 # What matters is who answered: a firewall's page or the CDN itself.
-check_network() {
+check_download() {
   local response
   response="$(curl --silent --include --max-time 10 "$CDN_URL" || true)"
   if test -z "$response"; then
@@ -129,8 +129,8 @@ prepare_connect() {
 }
 
 case "${1:-}" in
-  check)
-    check_network
+  check-download)
+    check_download
     ;;
   install)
     require_runtime
@@ -156,7 +156,7 @@ case "${1:-}" in
     "${TM2020_RUNTIME}/bin/wineserver" -k
     ;;
   *)
-    echo "usage: $(basename "$0") check|install|connect|diag|report|stop" >&2
+    echo "usage: $(basename "$0") install|connect|diag|report|stop|check-download" >&2
     exit 2
     ;;
 esac

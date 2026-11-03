@@ -54,7 +54,7 @@ bin/tm2020 connect
 | `bin/tm2020 diag` | Start Connect the same way, and record frame rate, CPU and GPU use while you play |
 | `bin/tm2020 report` | Show what the last `diag` session recorded |
 | `bin/tm2020 stop` | Stop everything in this prefix, including the game |
-| `bin/tm2020 check` | Tell whether this network reaches Ubisoft's download server |
+| `bin/tm2020 check-download` | Tell whether this network lets Connect download from Ubisoft's server |
 
 To see the frame rate in the game, start Connect with `DXVK_HUD=fps,frametimes bin/tm2020 connect`.
 
@@ -140,7 +140,7 @@ Measured on an Apple M5 Pro with macOS 27.0.1 on 2 November 2026. The offline te
 
 ## Troubleshooting
 
-**"Unable to start download (Code: 17004)".** This is usually the network, not Wine. Some networks, such as campus and office ones, block Ubisoft's download server as a game application. Run `bin/tm2020 check` to see who answers, and install the game from another network if it is blocked. The `OPEN` result has not been seen on a real open network yet, so treat it as a good sign and not as proof.
+**"Unable to start download (Code: 17004)".** This is usually the network, not Wine. Some networks, such as campus and office ones, block Ubisoft's download server as a game application. Run `bin/tm2020 check-download` to see who answers, and install the game from another network if it is blocked. The `OPEN` result has not been seen on a real open network yet, so treat it as a good sign and not as proof.
 
 **"Access is temporarily restricted" at sign-in.** Read [Sign-in and the reported GPU](#sign-in-and-the-reported-gpu). If you saw this page before, Connect's browser profile may be flagged. Stop Connect and move `~/Games/TM2020/prefix/drive_c/users/<you>/AppData/Local/Ubisoft Game Launcher/cache/http2` aside. Your games are not affected, and the next `bin/tm2020 connect` sets the folder up again.
 
