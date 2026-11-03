@@ -42,6 +42,7 @@ readonly DXVK_DLLS="${TM2020_RUNTIME}/lib/dxvk"
 readonly CONNECT_IDLE="${TM2020_RUNTIME}/libexec/connect-idle.exe"
 readonly WINDOWS_DIR="${WINEPREFIX}/drive_c/windows"
 readonly APP_ID=local.trackmania2020-macos.connect
+: "${LSREGISTER:=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister}"
 
 fail() {
   echo "$*" >&2
@@ -206,12 +207,20 @@ add_app_icon() {
   return "$status"
 }
 
+# A new app shows up in Spotlight and Launchpad only once macOS has noticed it, which can take
+# a while for one that a script wrote. Installers tell macOS about it themselves, and so does this.
+register_app() {
+  touch "$TM2020_APP"
+  if test -x "$LSREGISTER"; then "$LSREGISTER" -f "$TM2020_APP" || true; fi
+  mdimport "$TM2020_APP" 2>/dev/null || true
+}
+
 # The game is usually installed after the app is made, so the app gets its icon on a later start.
 refresh_app_icon() {
   test ! -f "${TM2020_APP}/Contents/Resources/AppIcon.icns" || return 0
   test "$(plutil -extract CFBundleIdentifier raw -o - "${TM2020_APP}/Contents/Info.plist" 2>/dev/null)" = "$APP_ID" ||
     return 0
-  if add_app_icon; then touch "$TM2020_APP"; fi
+  if add_app_icon; then register_app; fi
 }
 
 # The app is a small script that runs this file's start command, with the folders this
@@ -260,8 +269,7 @@ SH
   chmod +x "${contents}/MacOS/tm2020.partial"
   mv -f "${contents}/MacOS/tm2020.partial" "${contents}/MacOS/tm2020"
   add_app_icon || true
-  # Finder and Launchpad notice a changed app sooner when its folder is touched.
-  touch "$TM2020_APP"
+  register_app
   echo "The app is ${TM2020_APP}"
 }
 

@@ -52,7 +52,11 @@ wait_for_wine() {
 mkdir -p "${WORK}/bin" "$HOME"
 printf '#!/bin/sh\nexit 0\n' >"${WORK}/bin/arch"
 printf '#!/bin/sh\nprintf "%%s\\n" "$*" >>"%s/alerts.log"\n' "$WORK" >"${WORK}/bin/osascript"
-chmod +x "${WORK}/bin/arch" "${WORK}/bin/osascript"
+# Telling macOS about the app is written down too, so the test app never reaches its databases.
+printf '#!/bin/sh\nprintf "%%s\\n" "$*" >>"%s/registered.log"\n' "$WORK" >"${WORK}/bin/lsregister"
+printf '#!/bin/sh\nprintf "%%s\\n" "$*" >>"%s/indexed.log"\n' "$WORK" >"${WORK}/bin/mdimport"
+chmod +x "${WORK}/bin/arch" "${WORK}/bin/osascript" "${WORK}/bin/lsregister" "${WORK}/bin/mdimport"
+export LSREGISTER="${WORK}/bin/lsregister"
 
 # A runtime whose Wine only writes down what it was asked to run.
 readonly STANDIN="${WORK}/standin/trackmania2020-macos-${VERSION}-runtime"
@@ -103,6 +107,8 @@ cmp -s "${RUNTIME}/lib/dxvk/x64/d3d11.dll" "${PREFIX}/drive_c/windows/system32/d
 test "$(plutil -extract CFBundleIdentifier raw -o - "${TM2020_APP}/Contents/Info.plist")" = local.trackmania2020-macos.connect ||
   fail 'the app has the wrong identifier'
 plutil -lint "${TM2020_APP}/Contents/Info.plist" >/dev/null || fail "the app's Info.plist is broken"
+grep -qxF -- "-f ${TM2020_APP}" "${WORK}/registered.log" || fail 'the app was not registered with Launch Services'
+grep -qxF -- "${TM2020_APP}" "${WORK}/indexed.log" || fail 'Spotlight was not asked to index the app'
 bash -n "${TM2020_APP}/Contents/MacOS/tm2020" || fail "the app's script is broken"
 grep -qxF "tm2020=${LAUNCHER// /\\ }/bin/tm2020" "${TM2020_APP}/Contents/MacOS/tm2020" ||
   fail "the app doesn't run the launcher: $(cat "${TM2020_APP}/Contents/MacOS/tm2020")"

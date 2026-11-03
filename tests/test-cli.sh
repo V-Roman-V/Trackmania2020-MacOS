@@ -12,6 +12,8 @@ trap 'rm -rf "$WORK"' EXIT
 export TM2020_ROOT="${WORK}/root"
 export TM2020_CACHE="${WORK}/cache"
 export TM2020_RUNTIME="${WORK}/runtime"
+# start can update the app, so it must never be the real one, and nothing may reach macOS's databases.
+export TM2020_APP="${WORK}/Trackmania 2020.app" TM2020_SUPPORT="${WORK}/support" LSREGISTER=/usr/bin/true
 readonly PREFIX="${TM2020_ROOT}/prefix"
 
 fail() {
