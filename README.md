@@ -1,6 +1,8 @@
 # Trackmania 2020 for Apple Silicon
 
-Run Trackmania (2020) and Ubisoft Connect on an Apple Silicon Mac with a patched Wine runtime and DXVK, for free and without a paid compatibility layer.
+Run Trackmania (2020) and Ubisoft Connect on an Apple Silicon Mac with a patched Wine runtime and DXVK. The project itself is free, and you don't need a paid compatibility layer.
+
+It doesn't change what you can play. Trackmania has two kinds of access: Starter, which is free and has limited content, and Club, a yearly subscription with everything. Your Ubisoft account decides which one you have, and nothing in this project depends on it. Both have been tested, and they work the same way through Connect.
 
 This is an independent community project, not affiliated with Nadeo or Ubisoft. The game and Connect are not redistributed here. Connect downloads from Ubisoft, and you sign in with your own Ubisoft account.
 
@@ -10,6 +12,7 @@ This is early work, and it has only been tested on one Mac, an M5 Pro with macOS
 | --- | --- |
 | Ubisoft Connect | Opens, signs in and installs the game |
 | Trackmania | Starts and draws levels correctly, including Shadows |
+| Starter and Club access | Both work. Your Ubisoft account decides which one you get |
 | Fullscreen | Works with one display, but stays windowed while a second display is connected |
 | Openplanet | Works, with plugins from its Plugin Manager |
 | Online races | Not confirmed yet |
@@ -92,7 +95,7 @@ WINEPREFIX=~/Games/TM2020/prefix \
   OpenplanetNext_1.29.14.exe /S '/D=C:\users\<you>\Games\Trackmania'
 ```
 
-The installer sets the DLL override it needs by itself. Run it again after a game update. Starter and Standard editions of the game only get signed plugins.
+The installer sets the DLL override it needs by itself. Run it again after a game update. With Starter access, Openplanet only loads signed plugins.
 
 ## Where files go
 
