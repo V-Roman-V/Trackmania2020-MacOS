@@ -107,14 +107,14 @@ A release is a git tag `v<VERSION>` with a GitHub release that has four files at
 3. Install from the packed files before you publish, into folders that can't touch your own installation. Serve `.build/dist` the way GitHub would:
 
    ```sh
-   test="$PWD/.build/release-test"
-   mkdir -p "$test/repo/releases/download/v$(cat VERSION)"
-   cp .build/dist/* "$test/repo/releases/download/v$(cat VERSION)/"
-   TM2020_REPO="file://$test/repo" TM2020_ROOT="$test/root" TM2020_SUPPORT="$test/support" \
-     TM2020_CACHE="$test/cache" TM2020_APP="$test/Trackmania 2020.app" ./install.sh
+   trial="$PWD/.build/release-test"
+   mkdir -p "$trial/repo/releases/download/v$(cat VERSION)"
+   cp .build/dist/* "$trial/repo/releases/download/v$(cat VERSION)/"
+   TM2020_REPO="file://$trial/repo" TM2020_ROOT="$trial/root" TM2020_SUPPORT="$trial/support" \
+     TM2020_CACHE="$trial/cache" TM2020_APP="$trial/Trackmania 2020.app" ./install.sh
    ```
 
-   Then open that app, sign in, install or point Connect at the game, and play a race. Check `connect.log` in `$test/root/logs` for `Failed to compile pipeline`.
+   Then open that app, sign in, install or point Connect at the game, and play a race. Check `connect.log` in `$trial/root/logs` for `Failed to compile pipeline`.
 4. Push the commit, and create the release `v<VERSION>` on GitHub from it, with the four files attached. Keep it a draft until the files are uploaded, because the one-line install picks up the latest published release.
 5. Run the one-line install from the README on a Mac or an account that doesn't have the project yet.
 
