@@ -2,7 +2,8 @@
 
 Play Trackmania (2020) on a Mac with an M-series chip. This free, open-source project runs Ubisoft Connect and the game through Wine, with fixes for Apple's graphics and some speed-ups of its own. Sign-in, online races and [Openplanet](https://openplanet.dev) with its plugins all work.
 
-For TrackMania Nations Forever and other Trackmania games, see [TrackMania-MacOS](https://github.com/vakesz/TrackMania-MacOS). This project was inspired by it and uses some of its Wine patches.
+> [!NOTE]
+> For TrackMania Nations Forever and other Trackmania games, see [TrackMania-MacOS](https://github.com/vakesz/TrackMania-MacOS). This project was inspired by it and uses some of its Wine patches.
 
 <table>
   <tr>
